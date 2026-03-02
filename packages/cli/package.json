@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@safeclaw/core": "workspace:*",
-    "@safeclaw/gateway": "workspace:*"
+    "@safeclaw/gateway": "workspace:*",
+    "@safeclaw/sandbox": "workspace:*",
+    "@safeclaw/vault": "workspace:*"
   },
   "files": ["dist"]
 }

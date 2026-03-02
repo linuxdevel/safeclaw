@@ -7,6 +7,8 @@
   "include": ["src"],
   "references": [
     { "path": "../core" },
-    { "path": "../gateway" }
+    { "path": "../gateway" },
+    { "path": "../sandbox" },
+    { "path": "../vault" }
   ]
 }

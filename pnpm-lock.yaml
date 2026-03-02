@@ -32,6 +32,12 @@ importers:
       '@safeclaw/gateway':
         specifier: workspace:*
         version: link:../gateway
+      '@safeclaw/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@safeclaw/vault':
+        specifier: workspace:*
+        version: link:../vault
 
   packages/core:
     dependencies:
