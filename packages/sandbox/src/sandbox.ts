@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
-import type { SandboxPolicy, SandboxResult } from "./types.js";
+import type { Writable } from "node:stream";
+import type { SandboxPolicy, SandboxResult, EnforcementLayers } from "./types.js";
 import { assertSandboxSupported } from "./detect.js";
+import { findHelper, verifyHelper } from "./helper.js";
+import { KNOWN_HELPER_HASH } from "./helper-hash.js";
 
 export class Sandbox {
   private readonly policy: SandboxPolicy;
@@ -20,10 +23,52 @@ export class Sandbox {
     // If we have unshare flags, wrap: unshare [flags] -- command [args]
     // Otherwise run directly
     const useUnshare = unshareFlags.length > 0;
-    const spawnCmd = useUnshare ? "unshare" : command;
-    const spawnArgs = useUnshare
-      ? [...unshareFlags, "--", command, ...args]
-      : args;
+
+    // Resolve helper binary
+    let verifiedHelperPath: string | undefined;
+    const helperPath = findHelper();
+    if (helperPath !== undefined) {
+      if (verifyHelper(helperPath, KNOWN_HELPER_HASH)) {
+        verifiedHelperPath = helperPath;
+      } else {
+        console.warn(
+          `safeclaw: helper binary at ${helperPath} failed checksum verification; falling back to namespace-only isolation`,
+        );
+      }
+    }
+
+    const useHelper = verifiedHelperPath !== undefined;
+
+    // Build enforcement metadata
+    const enforcement: EnforcementLayers = {
+      namespaces: useUnshare,
+      landlock: useHelper,
+      seccomp: useHelper,
+      capDrop: useHelper,
+    };
+
+    // Build spawn command and args based on available isolation
+    let spawnCmd: string;
+    let spawnArgs: string[];
+    let stdio: ("ignore" | "pipe")[];
+
+    if (useUnshare && verifiedHelperPath !== undefined) {
+      spawnCmd = "unshare";
+      spawnArgs = [...unshareFlags, "--", verifiedHelperPath, "--", command, ...args];
+      stdio = ["ignore", "pipe", "pipe", "pipe"];
+    } else if (useUnshare) {
+      spawnCmd = "unshare";
+      spawnArgs = [...unshareFlags, "--", command, ...args];
+      stdio = ["ignore", "pipe", "pipe"];
+    } else if (verifiedHelperPath !== undefined) {
+      spawnCmd = verifiedHelperPath;
+      spawnArgs = ["--", command, ...args];
+      stdio = ["ignore", "pipe", "pipe", "pipe"];
+    } else {
+      spawnCmd = command;
+      spawnArgs = args;
+      stdio = ["ignore", "pipe", "pipe"];
+    }
 
     return new Promise<SandboxResult>((resolve) => {
       const stdoutChunks: Buffer[] = [];
@@ -32,9 +77,22 @@ export class Sandbox {
       let killReason: "timeout" | "oom" | "signal" | undefined;
 
       const proc = spawn(spawnCmd, spawnArgs, {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio,
         detached: true,
       });
+
+      // Write policy JSON to fd 3 when using helper
+      if (useHelper) {
+        const fd3 = proc.stdio[3] as Writable;
+        fd3.on("error", () => {
+          // Ignored: the child may exit before reading fd 3
+        });
+        const policyJson = JSON.stringify({
+          filesystem: this.policy.filesystem,
+          syscalls: this.policy.syscalls,
+        });
+        fd3.end(policyJson);
+      }
 
       const timer = setTimeout(() => {
         killed = true;
@@ -51,8 +109,8 @@ export class Sandbox {
         }
       }, timeout);
 
-      proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-      proc.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+      proc.stdout!.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
+      proc.stderr!.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
       proc.on("close", (code: number | null) => {
         clearTimeout(timer);
@@ -63,6 +121,7 @@ export class Sandbox {
           durationMs: performance.now() - start,
           killed,
           killReason,
+          enforcement,
         });
       });
 
@@ -74,6 +133,7 @@ export class Sandbox {
           stderr: err.message,
           durationMs: performance.now() - start,
           killed: false,
+          enforcement,
         });
       });
     });

@@ -1,6 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import { DEFAULT_POLICY } from "@safeclaw/sandbox";
 import type { SandboxPolicy, KernelCapabilities } from "@safeclaw/sandbox";
+
+/**
+ * Probe whether user namespaces work on this machine.
+ * GitHub Actions runners and some containers restrict unprivileged
+ * user namespaces, causing `unshare --user` to fail.
+ */
+let canUnshareUser = false;
+try {
+  execFileSync("unshare", ["--user", "--map-root-user", "--", "/bin/true"], {
+    timeout: 3000,
+  });
+  canUnshareUser = true;
+} catch {
+  // user namespaces not available — skip dependent tests
+}
 
 const UNSUPPORTED_CAPS: KernelCapabilities = {
   landlock: { supported: false, abiVersion: 0 },
@@ -23,6 +39,15 @@ const mockAssert = vi.fn<() => KernelCapabilities>();
 vi.mock("../../packages/sandbox/src/detect.js", () => ({
   detectKernelCapabilities: () => UNSUPPORTED_CAPS,
   assertSandboxSupported: (...args: []) => mockAssert(...args),
+}));
+
+vi.mock("../../packages/sandbox/src/helper.js", () => ({
+  findHelper: () => undefined,
+  verifyHelper: () => false,
+}));
+
+vi.mock("../../packages/sandbox/src/helper-hash.js", () => ({
+  KNOWN_HELPER_HASH: "sha256:test-hash",
 }));
 
 const { Sandbox } = await import("@safeclaw/sandbox");
@@ -112,28 +137,34 @@ describe("Sandbox escape prevention", () => {
   });
 
   describe("execute() enforces sandbox policy", () => {
-    it("returns a result with stdout and exitCode", async () => {
-      mockAssert.mockReturnValue(FULL_CAPS);
+    it.skipIf(!canUnshareUser)(
+      "returns a result with stdout and exitCode",
+      async () => {
+        mockAssert.mockReturnValue(FULL_CAPS);
 
-      const sandbox = new Sandbox(DEFAULT_POLICY);
-      const result = await sandbox.execute("/bin/echo", ["hello"]);
+        const sandbox = new Sandbox(DEFAULT_POLICY);
+        const result = await sandbox.execute("/bin/echo", ["hello"]);
 
-      expect(result.stdout).toContain("hello");
-      expect(result.exitCode).toBe(0);
-      expect(result.killed).toBe(false);
-      expect(result.killReason).toBeUndefined();
-      expect(result.durationMs).toBeGreaterThanOrEqual(0);
-    });
+        expect(result.stdout).toContain("hello");
+        expect(result.exitCode).toBe(0);
+        expect(result.killed).toBe(false);
+        expect(result.killReason).toBeUndefined();
+        expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      },
+    );
 
-    it("enforces timeout — kills long-running processes", async () => {
-      mockAssert.mockReturnValue(FULL_CAPS);
+    it.skipIf(!canUnshareUser)(
+      "enforces timeout — kills long-running processes",
+      async () => {
+        mockAssert.mockReturnValue(FULL_CAPS);
 
-      const policy = { ...DEFAULT_POLICY, timeoutMs: 100 };
-      const sandbox = new Sandbox(policy);
-      const result = await sandbox.execute("/bin/sleep", ["10"]);
+        const policy = { ...DEFAULT_POLICY, timeoutMs: 100 };
+        const sandbox = new Sandbox(policy);
+        const result = await sandbox.execute("/bin/sleep", ["10"]);
 
-      expect(result.killed).toBe(true);
-      expect(result.killReason).toBe("timeout");
-    });
+        expect(result.killed).toBe(true);
+        expect(result.killReason).toBe("timeout");
+      },
+    );
   });
 });

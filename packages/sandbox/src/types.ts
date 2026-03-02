@@ -13,6 +13,14 @@ export interface SandboxPolicy {
   timeoutMs?: number | undefined;
 }
 
+/** Which enforcement layers were active during execution */
+export interface EnforcementLayers {
+  namespaces: boolean;
+  landlock: boolean;
+  seccomp: boolean;
+  capDrop: boolean;
+}
+
 /** Result of a sandboxed execution */
 export interface SandboxResult {
   exitCode: number;
@@ -21,6 +29,7 @@ export interface SandboxResult {
   durationMs: number;
   killed: boolean;
   killReason?: "timeout" | "oom" | "signal" | undefined;
+  enforcement?: EnforcementLayers | undefined;
 }
 
 /** Kernel feature availability */

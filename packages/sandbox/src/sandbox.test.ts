@@ -1,11 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import { DEFAULT_POLICY } from "./types.js";
 import type { KernelCapabilities } from "./types.js";
 
+/**
+ * Probe whether user namespaces work on this machine.
+ * GitHub Actions runners and some containers restrict unprivileged
+ * user namespaces, causing `unshare --user` to fail.
+ */
+let canUnshareUser = false;
+try {
+  execFileSync("unshare", ["--user", "--map-root-user", "--", "/bin/true"], {
+    timeout: 3000,
+  });
+  canUnshareUser = true;
+} catch {
+  // user namespaces not available — skip dependent tests
+}
+
 const mockAssertSandboxSupported = vi.fn<() => KernelCapabilities>();
+const mockFindHelper = vi.fn<() => string | undefined>();
+const mockVerifyHelper = vi.fn<(path: string, hash: string) => boolean>();
 
 vi.mock("./detect.js", () => ({
   assertSandboxSupported: mockAssertSandboxSupported,
+}));
+
+vi.mock("./helper.js", () => ({
+  findHelper: (...args: unknown[]) => mockFindHelper(),
+  verifyHelper: (...args: unknown[]) => mockVerifyHelper(args[0] as string, args[1] as string),
+}));
+
+vi.mock("./helper-hash.js", () => ({
+  KNOWN_HELPER_HASH: "sha256:test-hash",
 }));
 
 const { Sandbox } = await import("./sandbox.js");
@@ -19,6 +46,7 @@ const FULL_CAPS: KernelCapabilities = {
 describe("Sandbox", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindHelper.mockReturnValue(undefined);
   });
 
   it("constructor calls assertSandboxSupported", () => {
@@ -54,79 +82,156 @@ describe("Sandbox", () => {
 describe("Sandbox.execute()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindHelper.mockReturnValue(undefined);
   });
 
-  it("runs a command and returns stdout", async () => {
-    mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    const result = await sandbox.execute("/bin/echo", ["hello"]);
-    expect(result.stdout).toContain("hello");
-    expect(result.exitCode).toBe(0);
-    expect(result.killed).toBe(false);
-  });
+  it.skipIf(!canUnshareUser)(
+    "runs a command and returns stdout",
+    async () => {
+      mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+      const sandbox = new Sandbox(DEFAULT_POLICY);
+      const result = await sandbox.execute("/bin/echo", ["hello"]);
+      expect(result.stdout).toContain("hello");
+      expect(result.exitCode).toBe(0);
+      expect(result.killed).toBe(false);
+    },
+  );
 
-  it("returns non-zero exit code on failure", async () => {
-    mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    const result = await sandbox.execute("/bin/false", []);
-    expect(result.exitCode).not.toBe(0);
-    expect(result.killed).toBe(false);
-  });
+  it.skipIf(!canUnshareUser)(
+    "returns non-zero exit code on failure",
+    async () => {
+      mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+      const sandbox = new Sandbox(DEFAULT_POLICY);
+      const result = await sandbox.execute("/bin/false", []);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.killed).toBe(false);
+    },
+  );
 
-  it("kills process after timeout", async () => {
-    mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
-    const policy = { ...DEFAULT_POLICY, timeoutMs: 100 };
-    const sandbox = new Sandbox(policy);
-    const result = await sandbox.execute("/bin/sleep", ["10"]);
-    expect(result.killed).toBe(true);
-    expect(result.killReason).toBe("timeout");
-  });
+  it.skipIf(!canUnshareUser)(
+    "kills process after timeout",
+    async () => {
+      mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+      const policy = { ...DEFAULT_POLICY, timeoutMs: 100 };
+      const sandbox = new Sandbox(policy);
+      const result = await sandbox.execute("/bin/sleep", ["10"]);
+      expect(result.killed).toBe(true);
+      expect(result.killReason).toBe("timeout");
+    },
+  );
 
-  it("captures stderr", async () => {
+  it.skipIf(!canUnshareUser)("captures stderr", async () => {
     mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
     const sandbox = new Sandbox(DEFAULT_POLICY);
     const result = await sandbox.execute("/bin/sh", ["-c", "echo error >&2"]);
     expect(result.stderr).toContain("error");
   });
 
-  it("reports durationMs", async () => {
+  it.skipIf(!canUnshareUser)("reports durationMs", async () => {
     mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
     const sandbox = new Sandbox(DEFAULT_POLICY);
     const result = await sandbox.execute("/bin/true", []);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("mount namespace isolates filesystem changes from host", async () => {
+  it.skipIf(!canUnshareUser)(
+    "mount namespace isolates filesystem changes from host",
+    async () => {
+      mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+      const policy = {
+        ...DEFAULT_POLICY,
+        namespaces: { pid: false, net: false, mnt: true, user: true },
+      };
+      const sandbox = new Sandbox(policy);
+      const result = await sandbox.execute("/bin/sh", [
+        "-c",
+        "cat /proc/self/mounts | wc -l",
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(parseInt(result.stdout.trim(), 10)).toBeGreaterThan(0);
+    },
+  );
+
+  it.skipIf(!canUnshareUser)(
+    "blocks network access in network namespace",
+    async () => {
+      mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+      const policy = {
+        ...DEFAULT_POLICY,
+        namespaces: { pid: false, net: true, mnt: false, user: true },
+      };
+      const sandbox = new Sandbox(policy);
+      const result = await sandbox.execute("/bin/sh", [
+        "-c",
+        "ip link show 2>/dev/null | grep -oP '(?<=: )\\w+(?=:)' | sort",
+      ]);
+      expect(result.stdout.trim()).toBe("lo");
+      expect(result.exitCode).toBe(0);
+    },
+  );
+});
+
+describe("Sandbox.execute() helper integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
-    const policy = {
-      ...DEFAULT_POLICY,
-      namespaces: { pid: false, net: false, mnt: true, user: true },
-    };
-    const sandbox = new Sandbox(policy);
-    // In a mount namespace, the child has its own mount table.
-    // Verify the child can read its mount table (proving isolation).
-    const result = await sandbox.execute("/bin/sh", [
-      "-c",
-      "cat /proc/self/mounts | wc -l",
-    ]);
-    expect(result.exitCode).toBe(0);
-    expect(parseInt(result.stdout.trim(), 10)).toBeGreaterThan(0);
+    mockFindHelper.mockReturnValue(undefined);
   });
 
-  it("blocks network access in network namespace", async () => {
-    mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
-    const policy = {
-      ...DEFAULT_POLICY,
-      namespaces: { pid: false, net: true, mnt: false, user: true },
-    };
-    const sandbox = new Sandbox(policy);
-    // In a fresh net namespace, only 'lo' exists as a network interface.
-    // We use 'ip link show' which queries the kernel directly (not /sys).
-    const result = await sandbox.execute("/bin/sh", [
-      "-c",
-      "ip link show 2>/dev/null | grep -oP '(?<=: )\\w+(?=:)' | sort",
-    ]);
-    expect(result.stdout.trim()).toBe("lo");
+  it("sets enforcement.namespaces=true even without helper", async () => {
+    mockFindHelper.mockReturnValue(undefined);
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    const result = await sandbox.execute("/bin/true", []);
+
     expect(result.exitCode).toBe(0);
+    expect(result.enforcement).toBeDefined();
+    expect(result.enforcement!.namespaces).toBe(true);
+    expect(result.enforcement!.landlock).toBe(false);
+    expect(result.enforcement!.seccomp).toBe(false);
+    expect(result.enforcement!.capDrop).toBe(false);
+  });
+
+  it("sets full enforcement when helper is found and verified", async () => {
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockVerifyHelper.mockReturnValue(true);
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    const result = await sandbox.execute("/bin/true", []);
+
+    expect(result.enforcement).toBeDefined();
+    expect(result.enforcement!.namespaces).toBe(true);
+    expect(result.enforcement!.landlock).toBe(true);
+    expect(result.enforcement!.seccomp).toBe(true);
+    expect(result.enforcement!.capDrop).toBe(true);
+  });
+
+  it("falls back to namespace-only when helper checksum fails", async () => {
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockVerifyHelper.mockReturnValue(false);
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    const result = await sandbox.execute("/bin/true", []);
+
+    expect(result.enforcement).toBeDefined();
+    expect(result.enforcement!.namespaces).toBe(true);
+    expect(result.enforcement!.landlock).toBe(false);
+    expect(result.enforcement!.seccomp).toBe(false);
+    expect(result.enforcement!.capDrop).toBe(false);
+  });
+
+  it("logs warning when helper checksum fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockVerifyHelper.mockReturnValue(false);
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    await sandbox.execute("/bin/true", []);
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0]![0]).toMatch(/helper/i);
+
+    warnSpy.mockRestore();
   });
 });
