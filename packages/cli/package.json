@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "safeclaw": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
@@ -12,7 +15,8 @@
     "@safeclaw/core": "workspace:*",
     "@safeclaw/gateway": "workspace:*",
     "@safeclaw/sandbox": "workspace:*",
-    "@safeclaw/vault": "workspace:*"
+    "@safeclaw/vault": "workspace:*",
+    "@safeclaw/webchat": "workspace:*"
   },
   "files": ["dist"]
 }

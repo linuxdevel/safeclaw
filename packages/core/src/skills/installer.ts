@@ -33,13 +33,14 @@ export class SkillInstaller {
 
     if (autoApprove) {
       for (const cap of manifest.requiredCapabilities) {
-        this.registry.grantCapability({
+        const grant = {
           skillId: manifest.id,
           capability: cap.capability,
-          constraints: cap.constraints,
           grantedAt: new Date(),
-          grantedBy: "builtin",
-        });
+          grantedBy: "builtin" as const,
+          ...(cap.constraints !== undefined ? { constraints: cap.constraints } : {}),
+        };
+        this.registry.grantCapability(grant);
       }
     }
 
