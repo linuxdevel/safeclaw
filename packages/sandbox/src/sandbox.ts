@@ -18,6 +18,6 @@ export class Sandbox {
   }
 
   getPolicy(): SandboxPolicy {
-    return { ...this.policy };
+    return structuredClone(this.policy);
   }
 }

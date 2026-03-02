@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   encrypt,
   decrypt,
@@ -109,8 +109,9 @@ describe("Crypto validation (end-to-end, no mocks)", () => {
 describe("Vault file permission enforcement (real filesystem)", () => {
   let tmpDir: string;
 
-  // Create a unique temp directory for this test suite
-  tmpDir = mkdtempSync(join(tmpdir(), "safeclaw-perm-test-"));
+  beforeAll(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "safeclaw-perm-test-"));
+  });
 
   afterAll(() => {
     rmSync(tmpDir, { recursive: true, force: true });

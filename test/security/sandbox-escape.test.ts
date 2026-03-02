@@ -16,7 +16,10 @@ const FULL_CAPS: KernelCapabilities = {
 
 const mockAssert = vi.fn<() => KernelCapabilities>();
 
-// Mock the internal detect module that Sandbox actually imports from
+// Mock the internal detect module that Sandbox actually imports from.
+// We must mock the concrete file path (not the package entry point) because
+// Sandbox imports detect.js directly. The real detectKernelCapabilities reads
+// /proc/sys and invokes prctl(2), which are unavailable in test/CI environments.
 vi.mock("../../packages/sandbox/src/detect.js", () => ({
   detectKernelCapabilities: () => UNSUPPORTED_CAPS,
   assertSandboxSupported: (...args: []) => mockAssert(...args),
@@ -95,6 +98,16 @@ describe("Sandbox escape prevention", () => {
 
       const policyAgain = sandbox.getPolicy();
       expect(policyAgain.network).toBe("none");
+    });
+
+    it("mutating nested objects in returned policy does not affect sandbox", () => {
+      mockAssert.mockReturnValue(FULL_CAPS);
+
+      const sandbox = new Sandbox(DEFAULT_POLICY);
+      const policy = sandbox.getPolicy();
+      policy.filesystem.allow.push({ path: "/etc", access: "read" });
+      const policyAgain = sandbox.getPolicy();
+      expect(policyAgain.filesystem.allow).toEqual([]);
     });
   });
 
