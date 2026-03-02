@@ -95,4 +95,37 @@ describe("readTool", () => {
 
     expect(result).toBe("");
   });
+
+  it("rejects NaN offset", async () => {
+    await expect(
+      readTool.execute({ path: "/tmp/test.txt", offset: "abc" }),
+    ).rejects.toThrow(/offset.*number/i);
+  });
+
+  it("rejects offset less than 1", async () => {
+    await expect(
+      readTool.execute({ path: "/tmp/test.txt", offset: 0 }),
+    ).rejects.toThrow(/offset.*>= 1/i);
+  });
+
+  it("rejects NaN limit", async () => {
+    await expect(
+      readTool.execute({ path: "/tmp/test.txt", limit: "abc" }),
+    ).rejects.toThrow(/limit.*number/i);
+  });
+
+  it("rejects limit less than 1", async () => {
+    await expect(
+      readTool.execute({ path: "/tmp/test.txt", limit: 0 }),
+    ).rejects.toThrow(/limit.*>= 1/i);
+  });
+
+  it("handles file without trailing newline", async () => {
+    vi.mocked(readFileSync).mockReturnValue("line1\nline2");
+
+    const result = await readTool.execute({ path: "/tmp/test.txt" });
+
+    expect(result).toContain("1: line1");
+    expect(result).toContain("2: line2");
+  });
 });

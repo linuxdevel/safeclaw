@@ -123,4 +123,24 @@ describe("bashTool", () => {
 
     expect(result).toContain("error output");
   });
+
+  it("rejects NaN timeout", async () => {
+    await expect(
+      bashTool.execute({ command: "ls", timeout: "abc" }),
+    ).rejects.toThrow(/timeout.*number/i);
+  });
+
+  it("falls back to error message when no stdout/stderr on error", async () => {
+    vi.mocked(execFile).mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, cb: unknown) => {
+        const err = new Error("spawn failed");
+        (cb as (err: Error) => void)(err);
+        return undefined as never;
+      },
+    );
+
+    const result = await bashTool.execute({ command: "bad-command" });
+
+    expect(result).toContain("spawn failed");
+  });
 });

@@ -17,8 +17,21 @@ export const readTool: ToolHandler = {
 
     const offset =
       args["offset"] !== undefined ? Number(args["offset"]) : 1;
+    if (Number.isNaN(offset)) {
+      throw new Error("'offset' must be a number");
+    }
+    if (offset < 1) {
+      throw new Error("'offset' must be >= 1");
+    }
+
     const limit =
       args["limit"] !== undefined ? Number(args["limit"]) : undefined;
+    if (limit !== undefined && Number.isNaN(limit)) {
+      throw new Error("'limit' must be a number");
+    }
+    if (limit !== undefined && limit < 1) {
+      throw new Error("'limit' must be >= 1");
+    }
 
     const content = readFileSync(path, "utf-8");
     if (content === "") {

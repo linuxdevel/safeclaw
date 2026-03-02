@@ -26,7 +26,7 @@ describe("webFetchTool", () => {
     const result = await webFetchTool.execute({ url: "https://example.com" });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://example.com",
+      "https://example.com/",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(result).toContain("page content");

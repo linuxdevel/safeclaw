@@ -16,6 +16,9 @@ export const bashTool: ToolHandler = {
 
     const timeout =
       args["timeout"] !== undefined ? Number(args["timeout"]) : DEFAULT_TIMEOUT;
+    if (Number.isNaN(timeout)) {
+      throw new Error("'timeout' must be a number");
+    }
 
     const workdir =
       args["workdir"] !== undefined ? String(args["workdir"]) : undefined;

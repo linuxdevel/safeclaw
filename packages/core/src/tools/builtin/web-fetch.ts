@@ -31,7 +31,7 @@ export const webFetchTool: ToolHandler = {
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
 
     try {
-      const response = await fetch(urlArg, { signal: controller.signal });
+      const response = await fetch(parsed.href, { signal: controller.signal });
 
       if (!response.ok) {
         const body = await response.text();
