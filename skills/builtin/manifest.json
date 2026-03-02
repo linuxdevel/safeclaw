@@ -1,0 +1,128 @@
+{
+  "id": "builtin",
+  "version": "1.0.0",
+  "name": "SafeClaw Built-in Tools",
+  "description": "Core tools provided by SafeClaw: read, write, edit, bash, web_fetch",
+  "signature": "adc572d51db9e84dd0269d8eedadaaee5f2792b1239f5f2c9bae9ad719e392b1af99a0a6146d63e5e93197f65aa73d2bf39afda934b9ad1bed53cd2f8c36b103",
+  "publicKey": "b514475c9b8b1a107328f2c3aead7614276d3e945d05607b7e5062b4d7e0c4c4",
+  "requiredCapabilities": [
+    {
+      "capability": "fs:read",
+      "reason": "Read files from the filesystem"
+    },
+    {
+      "capability": "fs:write",
+      "reason": "Write and edit files on the filesystem"
+    },
+    {
+      "capability": "process:spawn",
+      "reason": "Execute shell commands"
+    },
+    {
+      "capability": "net:https",
+      "reason": "Fetch content from HTTPS URLs"
+    }
+  ],
+  "tools": [
+    {
+      "name": "read",
+      "description": "Read a file contents with optional offset and line limit",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Absolute path to the file"
+        },
+        "offset": {
+          "type": "number",
+          "required": false,
+          "description": "Line number to start from (1-indexed)"
+        },
+        "limit": {
+          "type": "number",
+          "required": false,
+          "description": "Maximum number of lines to read"
+        }
+      }
+    },
+    {
+      "name": "write",
+      "description": "Write content to a file, creating parent directories if needed",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Absolute path to the file"
+        },
+        "content": {
+          "type": "string",
+          "required": true,
+          "description": "Content to write"
+        }
+      }
+    },
+    {
+      "name": "edit",
+      "description": "Apply a string replacement to a file",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Absolute path to the file"
+        },
+        "oldString": {
+          "type": "string",
+          "required": true,
+          "description": "Text to find"
+        },
+        "newString": {
+          "type": "string",
+          "required": true,
+          "description": "Text to replace with"
+        },
+        "replaceAll": {
+          "type": "boolean",
+          "required": false,
+          "description": "Replace all occurrences"
+        }
+      }
+    },
+    {
+      "name": "bash",
+      "description": "Execute a shell command via /bin/bash",
+      "parameters": {
+        "command": {
+          "type": "string",
+          "required": true,
+          "description": "Shell command to execute"
+        },
+        "timeout": {
+          "type": "number",
+          "required": false,
+          "description": "Timeout in milliseconds (default 120000)"
+        },
+        "workdir": {
+          "type": "string",
+          "required": false,
+          "description": "Working directory"
+        }
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch a URL via HTTPS and return the response body",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "required": true,
+          "description": "HTTPS URL to fetch"
+        },
+        "format": {
+          "type": "string",
+          "required": false,
+          "description": "Response format: text or json (default text)"
+        }
+      }
+    }
+  ]
+}
