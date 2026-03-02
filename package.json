@@ -8,11 +8,11 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "tsc --build && pnpm --filter @safeclaw/webchat run postbuild",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --build --dry",
     "bundle": "bash scripts/bundle.sh"
   },
   "devDependencies": {
