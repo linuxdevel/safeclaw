@@ -383,7 +383,7 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
       keySource,
       signingKeyGenerated,
       selectedModel,
-      saltPath,
+      ...(saltPath !== undefined ? { saltPath } : {}),
     };
   } finally {
     reader.close();

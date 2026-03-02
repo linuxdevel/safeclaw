@@ -12,10 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "bundle": "bash scripts/bundle.sh"
   },
   "devDependencies": {
     "@oxlint/binding-linux-x64-gnu": "^1.50.0",
+    "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.18",
     "oxlint": "^1.50.0",
     "typescript": "^5.9.3",
