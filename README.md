@@ -52,9 +52,9 @@ After install, run `safeclaw onboard` for first-time setup.
 | Install script with vault preservation | Done | Upgrade-safe, preserves vault files |
 | OS-level sandboxing (Landlock + seccomp + namespaces) | **WIP** | Kernel detection works; execution stubbed (native bindings required) |
 | Sandbox-enforced tool execution | **WIP** | Tools run directly on host; sandbox.execute() not yet implemented |
-| `safeclaw audit` CLI command | **WIP** | Report logic implemented but not wired into CLI entry point |
-| Path normalization in capability enforcer | **WIP** | Uses raw startsWith; path traversal not prevented |
-| Runtime capability gating in agent bootstrap | **WIP** | Bootstrap grants all capabilities unconditionally |
+| `safeclaw audit` CLI command | Done | Wired into CLI; calls bootstrapAgent and runAudit |
+| Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
+| Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |
 
 ## CLI Commands
 
