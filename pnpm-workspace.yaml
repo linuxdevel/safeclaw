@@ -1,0 +1,4 @@
+packages:
+  - packages/*
+
+onlyBuiltDependencies: '["esbuild", "@oxlint/binding-linux-x64-gnu"]'
