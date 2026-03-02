@@ -57,6 +57,8 @@ const DEFAULT_POLICY: SandboxPolicy = {
 
 Skills that need filesystem or network access must declare capabilities, and those capabilities must be granted before the tool orchestrator will allow execution.
 
+For a detailed explanation of enforcement layers, the helper binary architecture, policy format, and security guarantees, see [Sandboxing Deep Dive](sandboxing.md).
+
 ## Capability system
 
 Skills declare the capabilities they need. The runtime enforces them.

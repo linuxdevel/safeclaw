@@ -50,7 +50,7 @@ After install, run `safeclaw onboard` for first-time setup.
 | Audit logging (in-memory) | Done | Per-execution recording with rotation |
 | CI/CD (GitHub Actions) | Done | Lint, build, typecheck, test, release |
 | Install script with vault preservation | Done | Upgrade-safe, preserves vault files |
-| OS-level sandboxing (Landlock + seccomp + namespaces) | **WIP** | Namespace isolation works (unshare); Landlock/seccomp require native helper (spec written) |
+| OS-level sandboxing (Landlock + seccomp + namespaces) | Done | Namespace + Landlock + seccomp + capability drop via native helper |
 | Sandbox-enforced tool execution | Done | Bash tool routed through sandbox; audit log records sandboxed status |
 | `safeclaw audit` CLI command | Done | Wired into CLI; calls bootstrapAgent and runAudit |
 | Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
@@ -94,6 +94,7 @@ pnpm lint
 
 - [Getting Started](docs/getting-started.md)
 - [Security Model](docs/security-model.md)
+- [Sandboxing Deep Dive](docs/sandboxing.md) — enforcement layers, threat model, helper architecture
 - [Skill Development](docs/skill-development.md)
 - [Architecture](docs/architecture.md)
 
