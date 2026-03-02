@@ -39,3 +39,25 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  build-native:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build native helper
+        run: make -C native
+
+      - name: Run native tests
+        run: make -C native check
+
+      - name: Verify static linking
+        run: |
+          file native/safeclaw-sandbox-helper
+          ldd native/safeclaw-sandbox-helper 2>&1 | grep -q "not a dynamic executable" || \
+          ldd native/safeclaw-sandbox-helper 2>&1 | grep -q "statically linked"

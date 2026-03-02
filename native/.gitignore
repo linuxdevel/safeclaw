@@ -1,0 +1,10 @@
+# Build artifacts
+*.o
+safeclaw-sandbox-helper
+
+# Test binaries
+test/test-policy
+test/test-syscall-table
+test/test-seccomp
+test/test-landlock
+test/test-caps

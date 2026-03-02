@@ -36,9 +36,23 @@ jobs:
       - name: Build and bundle
         run: pnpm bundle
 
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build native sandbox helper
+        run: make -C native
+
+      - name: Prepare native release assets
+        run: |
+          cp native/safeclaw-sandbox-helper safeclaw-sandbox-helper-linux-x86_64
+          sha256sum safeclaw-sandbox-helper-linux-x86_64 > SHA256SUMS
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
-          files: safeclaw-linux-x64.tar.gz
+          files: |
+            safeclaw-linux-x64.tar.gz
+            safeclaw-sandbox-helper-linux-x86_64
+            SHA256SUMS
           generate_release_notes: true

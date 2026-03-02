@@ -197,6 +197,39 @@ mkdir -p "$INSTALL_DIR"
 tar xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
 
 # ---------------------------------------------------------------------------
+# Download sandbox helper binary (optional — sandboxing works without it)
+# ---------------------------------------------------------------------------
+HELPER_ASSET="safeclaw-sandbox-helper-linux-${RAW_ARCH}"
+HELPER_URL="https://github.com/$REPO/releases/download/$TAG/$HELPER_ASSET"
+SHA_URL="https://github.com/$REPO/releases/download/$TAG/SHA256SUMS"
+
+info "Downloading sandbox helper..."
+HELPER_DL="$TMPDIR/$HELPER_ASSET"
+SHA_DL="$TMPDIR/SHA256SUMS"
+
+if curl -fSL --progress-bar -o "$HELPER_DL" "$HELPER_URL" 2>/dev/null && \
+   curl -fsSL -o "$SHA_DL" "$SHA_URL" 2>/dev/null; then
+
+    # Verify SHA-256 checksum
+    EXPECTED_HASH="$(grep "$HELPER_ASSET" "$SHA_DL" | awk '{print $1}')"
+    ACTUAL_HASH="$(sha256sum "$HELPER_DL" | awk '{print $1}')"
+
+    if [ -n "$EXPECTED_HASH" ] && [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
+        mkdir -p "$BIN_DIR"
+        install -m755 "$HELPER_DL" "$BIN_DIR/safeclaw-sandbox-helper"
+        success "Sandbox helper installed (SHA-256 verified)."
+    else
+        warn "Warning: Sandbox helper checksum mismatch — skipping."
+        warn "Expected: $EXPECTED_HASH"
+        warn "Actual:   $ACTUAL_HASH"
+        warn "SafeClaw will run with namespace-only sandboxing."
+    fi
+else
+    warn "Sandbox helper not available for $RAW_ARCH — skipping."
+    warn "SafeClaw will run with namespace-only sandboxing."
+fi
+
+# ---------------------------------------------------------------------------
 # Create wrapper script
 # ---------------------------------------------------------------------------
 mkdir -p "$BIN_DIR"
