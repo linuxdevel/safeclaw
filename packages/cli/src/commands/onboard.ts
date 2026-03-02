@@ -27,6 +27,8 @@ import {
 import type { KeySource } from "@safeclaw/vault";
 import { deriveKeyFromPassphrase as defaultDeriveKey } from "@safeclaw/vault";
 
+import { readPassphrase as defaultReadPassphrase } from "../readPassphrase.js";
+
 const COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98";
 const COPILOT_SCOPES = ["read:user"];
 
@@ -52,6 +54,12 @@ export interface OnboardOptions {
   deriveKey?: (passphrase: string, salt?: Buffer) => Promise<Buffer>;
   generateKeyPair?: () => SigningKeyPair;
   writeSalt?: (saltPath: string, hexSalt: string) => void;
+  readPassphrase?: (
+    prompt: string,
+    input: NodeJS.ReadableStream,
+    output: NodeJS.WritableStream,
+  ) => Promise<string>;
+  listModels?: () => Promise<string[] | null>;
 }
 
 export interface OnboardResult {
@@ -195,12 +203,14 @@ async function authenticate(
 
 async function createVaultStep(
   reader: LineReader,
+  input: NodeJS.ReadableStream,
   output: NodeJS.WritableStream,
   vaultPath: string,
   createVaultFn: (path: string, key: Buffer) => { set(name: string, value: string): void; save(): void },
   keyring: { store(key: Buffer): void; retrieve(): Buffer | null },
   deriveKey: (passphrase: string, salt?: Buffer) => Promise<Buffer>,
   writeSalt: (saltPath: string, hexSalt: string) => void,
+  readPassphraseFn: (prompt: string, input: NodeJS.ReadableStream, output: NodeJS.WritableStream) => Promise<string>,
 ): Promise<{
   vault: { set(name: string, value: string): void; save(): void };
   keySource: KeySource;
@@ -220,11 +230,11 @@ async function createVaultStep(
   }> => {
     let passphrase: string;
     for (;;) {
-      passphrase = await reader.ask("Enter passphrase: ");
+      passphrase = await readPassphraseFn("Enter passphrase: ", input, output);
       if (passphrase.length >= 8) break;
       print(output, "  Passphrase must be at least 8 characters. Try again.");
     }
-    const confirm = await reader.ask("Confirm passphrase: ");
+    const confirm = await readPassphraseFn("Confirm passphrase: ", input, output);
 
     if (passphrase !== confirm) {
       throw new Error("Passphrases do not match");
@@ -280,28 +290,40 @@ async function selectModel(
   reader: LineReader,
   output: NodeJS.WritableStream,
   vault: { set(name: string, value: string): void; save(): void },
+  listModelsFn?: () => Promise<string[] | null>,
 ): Promise<CopilotModel> {
   print(output, "=== Step 5: Select Default Model ===\n");
 
-  for (let i = 0; i < MODELS.length; i++) {
-    const model = MODELS[i]!;
+  let models: string[] = MODELS;
+  if (listModelsFn) {
+    const discovered = await listModelsFn();
+    if (discovered && discovered.length > 0) {
+      models = discovered;
+      print(output, "  Available models (from API):\n");
+    } else {
+      print(output, "  Could not fetch models from API, using defaults:\n");
+    }
+  }
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i]!;
     const marker = model === DEFAULT_MODEL ? " (default)" : "";
     print(output, `  ${i + 1}) ${model}${marker}`);
   }
 
   print(output, "");
-  const answer = await reader.ask(`Select model (1-${MODELS.length}) [1]: `);
+  const answer = await reader.ask(`Select model (1-${models.length}) [1]: `);
   const trimmed = answer.trim();
 
-  let selected: CopilotModel;
+  let selected: string;
   if (trimmed === "" || trimmed === "1") {
-    selected = DEFAULT_MODEL;
+    selected = models[0] ?? DEFAULT_MODEL;
   } else {
     const idx = parseInt(trimmed, 10) - 1;
-    const model = MODELS[idx];
-    if (idx < 0 || idx >= MODELS.length || model === undefined) {
+    const model = models[idx];
+    if (idx < 0 || idx >= models.length || model === undefined) {
       print(output, "  Invalid selection, using default.");
-      selected = DEFAULT_MODEL;
+      selected = models[0] ?? DEFAULT_MODEL;
     } else {
       selected = model;
     }
@@ -310,7 +332,7 @@ async function selectModel(
   vault.set("default_model", selected);
   print(output, `  Selected: ${selected}\n`);
 
-  return selected;
+  return selected as CopilotModel;
 }
 
 export async function runOnboarding(options: OnboardOptions): Promise<OnboardResult> {
@@ -328,6 +350,7 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     generateKeyPair: genKeyPair = defaultGenerateKeyPair,
     writeSalt = (saltPath: string, hexSalt: string) =>
       writeFileSync(saltPath, hexSalt, { mode: 0o600 }),
+    readPassphrase: readPass = defaultReadPassphrase,
   } = options;
 
   const rl = createInterface({ input, output, terminal: false });
@@ -352,12 +375,14 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     // Step 3: Create vault
     const { vault, keySource, saltPath } = await createVaultStep(
       reader,
+      input,
       output,
       vaultPath,
       createVaultFn,
       keyring,
       deriveKey,
       writeSalt,
+      readPass,
     );
 
     // Store access token if authenticated
@@ -369,7 +394,7 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     const signingKeyGenerated = generateKeyPairStep(output, vault, genKeyPair);
 
     // Step 5: Select default model
-    const selectedModel = await selectModel(reader, output, vault);
+    const selectedModel = await selectModel(reader, output, vault, options.listModels);
 
     // Save vault
     vault.save();

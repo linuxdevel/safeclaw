@@ -29,7 +29,9 @@ function createMockDeps(
     getCopilotToken: vi
       .fn()
       .mockResolvedValue({ token: "cpt_test", expiresAt: Date.now() + 3600000 }),
-    createReadlineInterface: undefined,
+    readPassphrase: vi
+      .fn()
+      .mockResolvedValue("test-passphrase"),
     ...overrides,
   };
 }
@@ -37,10 +39,6 @@ function createMockDeps(
 describe("bootstrapAgent", () => {
   it("returns agent and sessionManager when vault exists with passphrase key", async () => {
     const deps = createMockDeps();
-    const input = deps.input as PassThrough;
-    setTimeout(() => {
-      input.push("mypassphrase\n");
-    }, 10);
 
     const result = await bootstrapAgent(deps);
     expect(result.agent).toBeDefined();
@@ -110,11 +108,8 @@ describe("bootstrapAgent", () => {
     const saltHex = "aabbccdd11223344aabbccdd11223344";
     const deps = createMockDeps({
       readFileSync: vi.fn().mockReturnValue(saltHex),
+      readPassphrase: vi.fn().mockResolvedValue("testpass123"),
     });
-    const input = deps.input as PassThrough;
-    setTimeout(() => {
-      input.push("testpass123\n");
-    }, 10);
 
     await bootstrapAgent(deps);
 
@@ -147,21 +142,18 @@ describe("bootstrapAgent", () => {
     expect(result.agent).toBeDefined();
   });
 
-  it("prompts for passphrase on output stream", async () => {
-    const deps = createMockDeps();
-    const output = deps.output as PassThrough;
-    const input = deps.input as PassThrough;
-
-    const chunks: Buffer[] = [];
-    output.on("data", (chunk: Buffer) => chunks.push(chunk));
-
-    setTimeout(() => {
-      input.push("mypass123\n");
-    }, 10);
+  it("calls readPassphrase with correct prompt", async () => {
+    const mockReadPassphrase = vi.fn().mockResolvedValue("mypass123");
+    const deps = createMockDeps({
+      readPassphrase: mockReadPassphrase,
+    });
 
     await bootstrapAgent(deps);
 
-    const written = Buffer.concat(chunks).toString("utf8");
-    expect(written).toContain("Enter vault passphrase:");
+    expect(mockReadPassphrase).toHaveBeenCalledWith(
+      "Enter vault passphrase: ",
+      deps.input,
+      deps.output,
+    );
   });
 });

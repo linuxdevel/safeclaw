@@ -127,13 +127,23 @@ describe("CopilotClient", () => {
       expect(headers["Content-Type"]).toBe("application/json");
     });
 
-    it("throws on non-ok response", async () => {
-      fetchMock.mockResolvedValueOnce(jsonResponse({}, 500));
+    it("throws on non-ok response with body", async () => {
+      const errorBody = '{"error":"invalid_model","message":"Model not found"}';
+      const errorResponse = {
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () => Promise.resolve(errorBody),
+      } as Response;
+      fetchMock.mockResolvedValue(errorResponse);
 
       const client = new CopilotClient(token);
-      await expect(client.chat(baseRequest)).rejects.toThrow(
-        "Chat request failed: 500",
-      );
+      const err = (await client
+        .chat(baseRequest)
+        .catch((e: Error) => e)) as Error;
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toContain("Chat request failed: 400 Bad Request");
+      expect(err.message).toContain("invalid_model");
     });
   });
 

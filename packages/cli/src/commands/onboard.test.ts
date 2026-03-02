@@ -247,11 +247,17 @@ describe("runOnboarding", () => {
   });
 
   it("uses passphrase when user selects option 2", async () => {
-    simulateInput(input, "n", "2", "my-secret-pass", "my-secret-pass", "");
+    // Lines: "n" for auth, "2" for passphrase, "" for model
+    simulateInput(input, "n", "2", "");
+
+    const readPassphrase = vi.fn()
+      .mockResolvedValueOnce("my-secret-pass")  // Enter passphrase
+      .mockResolvedValueOnce("my-secret-pass");  // Confirm passphrase
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
       vaultPath: "/tmp/test-vault.json",
+      readPassphrase,
     };
 
     const result = await runOnboarding(options);
@@ -356,11 +362,16 @@ describe("runOnboarding", () => {
   });
 
   it("throws when passphrases do not match", async () => {
-    simulateInput(input, "n", "2", "my-secret-pass", "different-pass", "");
+    simulateInput(input, "n", "2", "");
+
+    const readPassphrase = vi.fn()
+      .mockResolvedValueOnce("my-secret-pass")
+      .mockResolvedValueOnce("different-pass");
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
       vaultPath: "/tmp/test-vault.json",
+      readPassphrase,
     };
 
     await expect(runOnboarding(options)).rejects.toThrow(
@@ -405,11 +416,16 @@ describe("runOnboarding", () => {
   });
 
   it("persists salt file when using passphrase path", async () => {
-    simulateInput(input, "n", "2", "my-secret-pass", "my-secret-pass", "");
+    simulateInput(input, "n", "2", "");
+
+    const readPassphrase = vi.fn()
+      .mockResolvedValueOnce("my-secret-pass")
+      .mockResolvedValueOnce("my-secret-pass");
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
       vaultPath: "/tmp/test-vault.json",
+      readPassphrase,
     };
 
     const result = await runOnboarding(options);
@@ -423,7 +439,8 @@ describe("runOnboarding", () => {
   });
 
   it("falls back to passphrase when keyring throws", async () => {
-    simulateInput(input, "n", "1", "my-secret-pass", "my-secret-pass", "");
+    // Lines: "n" for auth, "1" for keyring (which will fail), "" for model
+    simulateInput(input, "n", "1", "");
 
     const failingKeyring = {
       store: vi.fn().mockImplementation(() => {
@@ -432,10 +449,15 @@ describe("runOnboarding", () => {
       retrieve: vi.fn().mockReturnValue(null),
     };
 
+    const readPassphrase = vi.fn()
+      .mockResolvedValueOnce("my-secret-pass")
+      .mockResolvedValueOnce("my-secret-pass");
+
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
       vaultPath: "/tmp/test-vault.json",
       keyringProvider: failingKeyring,
+      readPassphrase,
     };
 
     const result = await runOnboarding(options);
@@ -444,5 +466,43 @@ describe("runOnboarding", () => {
     const out = readOutput(output);
     expect(out).toContain("Keyring unavailable");
     expect(out).toContain("D-Bus not available");
+  });
+
+  it("shows API-discovered models when listModels returns results", async () => {
+    // Select model 2 from the discovered list
+    simulateInput(input, "n", "1", "2");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+      listModels: vi.fn().mockResolvedValue(["model-alpha", "model-beta"]),
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.selectedModel).toBe("model-beta");
+
+    const out = readOutput(output);
+    expect(out).toContain("Available models (from API)");
+    expect(out).toContain("model-alpha");
+    expect(out).toContain("model-beta");
+  });
+
+  it("falls back to hardcoded models when listModels returns null", async () => {
+    simulateInput(input, "n", "1", "");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+      listModels: vi.fn().mockResolvedValue(null),
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.selectedModel).toBe("claude-sonnet-4");
+
+    const out = readOutput(output);
+    expect(out).toContain("Could not fetch models from API");
+    expect(out).toContain("claude-sonnet-4");
   });
 });

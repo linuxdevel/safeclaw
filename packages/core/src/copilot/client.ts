@@ -25,8 +25,9 @@ export class CopilotClient {
     });
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "(unable to read body)");
       throw new Error(
-        `Chat request failed: ${response.status} ${response.statusText}`,
+        `Chat request failed: ${response.status} ${response.statusText}\n${body}`,
       );
     }
 
@@ -45,8 +46,9 @@ export class CopilotClient {
     });
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "(unable to read body)");
       throw new Error(
-        `Chat stream request failed: ${response.status} ${response.statusText}`,
+        `Chat stream request failed: ${response.status} ${response.statusText}\n${body}`,
       );
     }
 

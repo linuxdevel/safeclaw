@@ -1,8 +1,4 @@
 import {
-  createInterface,
-  type Interface as ReadlineInterface,
-} from "node:readline";
-import {
   existsSync as defaultExistsSync,
   readFileSync as defaultReadFileSync,
 } from "node:fs";
@@ -24,6 +20,7 @@ import {
   KeyringProvider as DefaultKeyringProvider,
   deriveKeyFromPassphrase as defaultDeriveKey,
 } from "@safeclaw/vault";
+import { readPassphrase as defaultReadPassphrase } from "../readPassphrase.js";
 
 export interface BootstrapDeps {
   input: NodeJS.ReadableStream;
@@ -39,10 +36,11 @@ export interface BootstrapDeps {
   ) => { get(name: string): string | undefined };
   deriveKey?: (passphrase: string, salt?: Buffer) => Promise<Buffer>;
   getCopilotToken?: (githubToken: string) => Promise<CopilotToken>;
-  createReadlineInterface?: (
+  readPassphrase?: (
+    prompt: string,
     input: NodeJS.ReadableStream,
     output: NodeJS.WritableStream,
-  ) => ReadlineInterface;
+  ) => Promise<string>;
 }
 
 export interface BootstrapResult {
@@ -78,7 +76,7 @@ export async function bootstrapAgent(
     openVault = (p: string, k: Buffer) => Vault.open(p, k),
     deriveKey = defaultDeriveKey,
     getCopilotToken: exchangeToken = defaultGetCopilotToken,
-    createReadlineInterface: createRl,
+    readPassphrase: readPass = defaultReadPassphrase,
   } = deps;
 
   // 1. Check vault exists
@@ -97,7 +95,7 @@ export async function bootstrapAgent(
     readFile,
     deriveKey,
     exists,
-    createRl,
+    readPassphrase: readPass,
   });
 
   // 3. Open vault
@@ -155,12 +153,11 @@ interface ResolveKeyOpts {
   readFile: (path: string, encoding: BufferEncoding) => string;
   deriveKey: (passphrase: string, salt?: Buffer) => Promise<Buffer>;
   exists: (path: string) => boolean;
-  createRl:
-    | ((
-        input: NodeJS.ReadableStream,
-        output: NodeJS.WritableStream,
-      ) => ReadlineInterface)
-    | undefined;
+  readPassphrase: (
+    prompt: string,
+    input: NodeJS.ReadableStream,
+    output: NodeJS.WritableStream,
+  ) => Promise<string>;
 }
 
 async function resolveKey(opts: ResolveKeyOpts): Promise<Buffer> {
@@ -182,32 +179,10 @@ async function resolveKey(opts: ResolveKeyOpts): Promise<Buffer> {
   const salt = Buffer.from(saltHex, "hex");
 
   // Prompt for passphrase
-  const passphrase = await promptPassphrase(
+  const passphrase = await opts.readPassphrase(
+    "Enter vault passphrase: ",
     opts.input,
     opts.output,
-    opts.createRl,
   );
   return opts.deriveKey(passphrase, salt);
-}
-
-async function promptPassphrase(
-  input: NodeJS.ReadableStream,
-  output: NodeJS.WritableStream,
-  createRl?: (
-    input: NodeJS.ReadableStream,
-    output: NodeJS.WritableStream,
-  ) => ReadlineInterface,
-): Promise<string> {
-  const rl = createRl
-    ? createRl(input, output)
-    : createInterface({ input, output, terminal: false });
-
-  output.write("Enter vault passphrase: ");
-
-  return new Promise<string>((resolve) => {
-    rl.once("line", (line: string) => {
-      rl.close();
-      resolve(line);
-    });
-  });
 }

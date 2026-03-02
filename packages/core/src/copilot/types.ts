@@ -24,12 +24,14 @@ export interface CopilotToken {
   expiresAt: number; // Unix timestamp ms
 }
 
-export type CopilotModel =
-  | "claude-sonnet-4"
-  | "claude-opus-4"
-  | "gpt-4.1"
-  | "gemini-2.5-pro"
-  | "o4-mini";
+/**
+ * Model identifier accepted by the Copilot API.
+ *
+ * Widened to `string` to support dynamically discovered models
+ * from the models.dev registry. Well-known defaults are listed
+ * as a convenience union but any valid model ID string is accepted.
+ */
+export type CopilotModel = string;
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
