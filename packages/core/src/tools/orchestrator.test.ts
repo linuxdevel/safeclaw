@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CapabilityEnforcer, CapabilityDeniedError } from "../capabilities/enforcer.js";
+import { CapabilityEnforcer } from "../capabilities/enforcer.js";
 import { CapabilityRegistry } from "../capabilities/registry.js";
 import type { CapabilityGrant } from "../capabilities/types.js";
 import { ToolOrchestrator, SimpleToolRegistry } from "./orchestrator.js";

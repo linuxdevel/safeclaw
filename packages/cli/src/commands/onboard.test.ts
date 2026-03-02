@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PassThrough } from "node:stream";
 import { runOnboarding } from "./onboard.js";
-import type { OnboardOptions, OnboardResult } from "./onboard.js";
+import type { OnboardOptions } from "./onboard.js";
 import type { KernelCapabilities } from "@safeclaw/sandbox";
 import type {
   DeviceCodeResponse,

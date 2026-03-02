@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./types.js";
 import type { CopilotClient } from "../copilot/client.js";
 import type {
   ChatCompletionResponse,
   ChatMessage,
-  ToolDefinitionParam,
 } from "../copilot/types.js";
 import type { Session } from "../sessions/session.js";
 import type { ToolOrchestrator } from "../tools/orchestrator.js";
@@ -354,7 +353,7 @@ describe("Agent", () => {
       });
 
       const agent = new Agent(makeConfig(), client, orchestrator);
-      const result = await agent.processMessage(session, "Read secret");
+      await agent.processMessage(session, "Read secret");
 
       // The tool result message should contain the error
       const addCalls = vi.mocked(session.addMessage).mock.calls;

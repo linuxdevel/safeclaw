@@ -9,6 +9,7 @@
     { "path": "../core" },
     { "path": "../gateway" },
     { "path": "../sandbox" },
-    { "path": "../vault" }
+    { "path": "../vault" },
+    { "path": "../webchat" }
   ]
 }
