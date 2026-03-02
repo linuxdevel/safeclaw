@@ -26,7 +26,11 @@ importers:
 
   packages/cli: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@safeclaw/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
 
   packages/gateway: {}
 
