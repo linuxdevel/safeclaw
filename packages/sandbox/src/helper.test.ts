@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as childProcess from "node:child_process";
 
@@ -9,7 +8,7 @@ vi.mock("node:child_process");
 const mockedFs = vi.mocked(fs);
 const mockedCp = vi.mocked(childProcess);
 
-const { findHelper, verifyHelper } = await import("./helper.js");
+const { findHelper } = await import("./helper.js");
 
 describe("findHelper", () => {
   const originalEnv = process.env;
@@ -88,38 +87,5 @@ describe("findHelper", () => {
 
     const result = findHelper();
     expect(result).toBeUndefined();
-  });
-});
-
-describe("verifyHelper", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns true when hash matches", () => {
-    const content = Buffer.from("fake-binary-content");
-    mockedFs.readFileSync.mockReturnValue(content);
-
-    const expected = createHash("sha256").update(content).digest("hex");
-
-    const result = verifyHelper("/path/to/helper", `sha256:${expected}`);
-    expect(result).toBe(true);
-  });
-
-  it("returns false when hash doesn't match", () => {
-    const content = Buffer.from("fake-binary-content");
-    mockedFs.readFileSync.mockReturnValue(content);
-
-    const result = verifyHelper("/path/to/helper", "sha256:0000000000000000000000000000000000000000000000000000000000000000");
-    expect(result).toBe(false);
-  });
-
-  it("returns false when file cannot be read", () => {
-    mockedFs.readFileSync.mockImplementation(() => {
-      throw new Error("ENOENT");
-    });
-
-    const result = verifyHelper("/nonexistent/helper", "sha256:abc123");
-    expect(result).toBe(false);
   });
 });

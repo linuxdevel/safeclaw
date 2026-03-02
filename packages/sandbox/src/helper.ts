@@ -1,5 +1,4 @@
-import { accessSync, readFileSync, constants } from "node:fs";
-import { createHash } from "node:crypto";
+import { accessSync, constants } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -16,6 +15,13 @@ function isExecutable(path: string): boolean {
     return false;
   }
 }
+
+// TODO: Re-add SHA-256 integrity verification of the helper binary.
+// The hash was removed because builds are not yet reproducible — the binary
+// hash changes across compiler versions and build environments, and neither
+// ci.yml nor release.yml updates the embedded hash. Once we have reproducible
+// builds or a release process that stamps the hash, re-introduce verification
+// so that a tampered helper binary is detected before use.
 
 export function findHelper(): string | undefined {
   const candidates: string[] = [];
@@ -57,15 +63,4 @@ export function findHelper(): string | undefined {
   }
 
   return undefined;
-}
-
-export function verifyHelper(helperPath: string, knownHash: string): boolean {
-  try {
-    const data = readFileSync(helperPath);
-    const hash = createHash("sha256").update(data).digest("hex");
-    const expected = knownHash.replace(/^sha256:/, "");
-    return hash === expected;
-  } catch {
-    return false;
-  }
 }

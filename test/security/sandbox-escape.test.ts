@@ -43,11 +43,6 @@ vi.mock("../../packages/sandbox/src/detect.js", () => ({
 
 vi.mock("../../packages/sandbox/src/helper.js", () => ({
   findHelper: () => undefined,
-  verifyHelper: () => false,
-}));
-
-vi.mock("../../packages/sandbox/src/helper-hash.js", () => ({
-  KNOWN_HELPER_HASH: "sha256:test-hash",
 }));
 
 const { Sandbox } = await import("@safeclaw/sandbox");

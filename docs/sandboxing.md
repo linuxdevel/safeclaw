@@ -26,7 +26,7 @@ SafeClaw treats every tool execution as untrusted. The sandbox limits the blast 
 ┌──────────────────────────────────────────────────────────────┐
 │  Node.js: Sandbox.execute(command, args)                     │
 │                                                              │
-│  1. Resolve helper binary (discovery + SHA-256 verify)       │
+│  1. Resolve helper binary (discovery)                        │
 │  2. Serialize policy JSON (filesystem + syscalls)            │
 │  3. Spawn: unshare [ns-flags] -- helper -- command [args]    │
 │  4. Write policy JSON to fd 3                                │
@@ -193,22 +193,16 @@ The full `SandboxPolicy` type (in TypeScript) also includes `network`, `namespac
 3. **User install path** -- `~/.safeclaw/bin/safeclaw-sandbox-helper`
 4. **System PATH** -- resolved via `which`
 
-### SHA-256 integrity verification
+If the helper is found and executable, all four enforcement layers (namespaces + Landlock + seccomp + capability drop) are active. If not found, SafeClaw falls back to namespace-only isolation.
 
-Before spawning the helper, its SHA-256 checksum is verified against a known-good hash embedded in the `@safeclaw/sandbox` package (`helper-hash.ts`). This prevents a tampered binary from being used as a privilege escalation vector.
-
-A compromised helper could:
-- Skip sandbox setup entirely, running the target unrestricted
-- Exfiltrate the policy JSON (reveals allowed paths and syscalls)
-- Replace the target command with a malicious payload
+> **TODO:** Re-add SHA-256 integrity verification of the helper binary once builds are reproducible. Currently, the binary hash changes across compiler versions and build environments, making a hardcoded hash impractical without a release process that stamps it.
 
 ### Graceful degradation
 
 | Helper status | Enforcement |
 |---------------|-------------|
-| Found + checksum valid | Namespaces + Landlock + seccomp + capability drop |
-| Found + checksum invalid | Namespaces only (warning logged) |
-| Not found | Namespaces only (warning logged) |
+| Found | Namespaces + Landlock + seccomp + capability drop |
+| Not found | Namespaces only |
 
 The `SandboxResult.enforcement` field reports which layers were active:
 
@@ -263,7 +257,7 @@ interface EnforcementLayers {
 | Capability abuse | All capabilities dropped before exec |
 | Process interference | PID namespace isolates process tree |
 | Mount manipulation | Mount namespace isolates filesystem view |
-| Helper binary tampering | SHA-256 integrity check before every use |
+| Helper binary tampering | File permissions and installation path trust (SHA-256 verification planned) |
 | Fd leakage from parent | Helper closes all fds > 2 before exec |
 | Runaway processes | Timeout-based kill with process group SIGKILL |
 

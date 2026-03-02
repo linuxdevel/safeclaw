@@ -20,7 +20,6 @@ try {
 
 const mockAssertSandboxSupported = vi.fn<() => KernelCapabilities>();
 const mockFindHelper = vi.fn<() => string | undefined>();
-const mockVerifyHelper = vi.fn<(path: string, hash: string) => boolean>();
 
 vi.mock("./detect.js", () => ({
   assertSandboxSupported: mockAssertSandboxSupported,
@@ -28,11 +27,6 @@ vi.mock("./detect.js", () => ({
 
 vi.mock("./helper.js", () => ({
   findHelper: (...args: unknown[]) => mockFindHelper(),
-  verifyHelper: (...args: unknown[]) => mockVerifyHelper(args[0] as string, args[1] as string),
-}));
-
-vi.mock("./helper-hash.js", () => ({
-  KNOWN_HELPER_HASH: "sha256:test-hash",
 }));
 
 const { Sandbox } = await import("./sandbox.js");
@@ -192,9 +186,8 @@ describe("Sandbox.execute() helper integration", () => {
     expect(result.enforcement!.capDrop).toBe(false);
   });
 
-  it("sets full enforcement when helper is found and verified", async () => {
+  it("sets full enforcement when helper is found", async () => {
     mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
-    mockVerifyHelper.mockReturnValue(true);
 
     const sandbox = new Sandbox(DEFAULT_POLICY);
     const result = await sandbox.execute("/bin/true", []);
@@ -204,34 +197,5 @@ describe("Sandbox.execute() helper integration", () => {
     expect(result.enforcement!.landlock).toBe(true);
     expect(result.enforcement!.seccomp).toBe(true);
     expect(result.enforcement!.capDrop).toBe(true);
-  });
-
-  it("falls back to namespace-only when helper checksum fails", async () => {
-    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
-    mockVerifyHelper.mockReturnValue(false);
-
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    const result = await sandbox.execute("/bin/true", []);
-
-    expect(result.enforcement).toBeDefined();
-    expect(result.enforcement!.namespaces).toBe(true);
-    expect(result.enforcement!.landlock).toBe(false);
-    expect(result.enforcement!.seccomp).toBe(false);
-    expect(result.enforcement!.capDrop).toBe(false);
-  });
-
-  it("logs warning when helper checksum fails", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
-    mockVerifyHelper.mockReturnValue(false);
-
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    await sandbox.execute("/bin/true", []);
-
-    expect(warnSpy).toHaveBeenCalledOnce();
-    expect(warnSpy.mock.calls[0]![0]).toMatch(/helper/i);
-
-    warnSpy.mockRestore();
   });
 });

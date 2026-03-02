@@ -2,8 +2,7 @@ import { spawn } from "node:child_process";
 import type { Writable } from "node:stream";
 import type { SandboxPolicy, SandboxResult, EnforcementLayers } from "./types.js";
 import { assertSandboxSupported } from "./detect.js";
-import { findHelper, verifyHelper } from "./helper.js";
-import { KNOWN_HELPER_HASH } from "./helper-hash.js";
+import { findHelper } from "./helper.js";
 
 export class Sandbox {
   private readonly policy: SandboxPolicy;
@@ -25,19 +24,9 @@ export class Sandbox {
     const useUnshare = unshareFlags.length > 0;
 
     // Resolve helper binary
-    let verifiedHelperPath: string | undefined;
+    // TODO: Re-add SHA-256 integrity verification once builds are reproducible
     const helperPath = findHelper();
-    if (helperPath !== undefined) {
-      if (verifyHelper(helperPath, KNOWN_HELPER_HASH)) {
-        verifiedHelperPath = helperPath;
-      } else {
-        console.warn(
-          `safeclaw: helper binary at ${helperPath} failed checksum verification; falling back to namespace-only isolation`,
-        );
-      }
-    }
-
-    const useHelper = verifiedHelperPath !== undefined;
+    const useHelper = helperPath !== undefined;
 
     // Build enforcement metadata
     const enforcement: EnforcementLayers = {
@@ -52,16 +41,16 @@ export class Sandbox {
     let spawnArgs: string[];
     let stdio: ("ignore" | "pipe")[];
 
-    if (useUnshare && verifiedHelperPath !== undefined) {
+    if (useUnshare && helperPath !== undefined) {
       spawnCmd = "unshare";
-      spawnArgs = [...unshareFlags, "--", verifiedHelperPath, "--", command, ...args];
+      spawnArgs = [...unshareFlags, "--", helperPath, "--", command, ...args];
       stdio = ["ignore", "pipe", "pipe", "pipe"];
     } else if (useUnshare) {
       spawnCmd = "unshare";
       spawnArgs = [...unshareFlags, "--", command, ...args];
       stdio = ["ignore", "pipe", "pipe"];
-    } else if (verifiedHelperPath !== undefined) {
-      spawnCmd = verifiedHelperPath;
+    } else if (helperPath !== undefined) {
+      spawnCmd = helperPath;
       spawnArgs = ["--", command, ...args];
       stdio = ["ignore", "pipe", "pipe", "pipe"];
     } else {
