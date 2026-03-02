@@ -88,7 +88,8 @@ static void test_allowed_syscalls(void)
 
         /* Perform an allowed operation: write to stderr */
         const char msg[] = "seccomp: child alive\n";
-        write(STDERR_FILENO, msg, sizeof(msg) - 1);
+        ssize_t wr = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+        if (wr < 0) _exit(97);
 
         _exit(0);
     }

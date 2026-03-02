@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 
 /* O_PATH may not be defined in all libc headers */
@@ -135,6 +136,27 @@ static uint64_t policy_access_to_landlock(int access_level, int abi)
     return rights;
 }
 
+/* ── access rights valid on file vs directory fds ─────────────────── */
+
+/*
+ * Landlock's RULE_PATH_BENEATH only permits a subset of access rights
+ * when the fd refers to a regular file (not a directory).  Specifically,
+ * only EXECUTE, WRITE_FILE, READ_FILE (and TRUNCATE on ABI ≥ 3) are
+ * valid for file fds.  All other rights (READ_DIR, REMOVE_*, MAKE_*,
+ * REFER) are directory-only and cause EINVAL if applied to a file fd.
+ *
+ * We detect files via fstat() and mask off the directory-only bits.
+ */
+static uint64_t file_valid_rights(int abi)
+{
+    uint64_t rights = LANDLOCK_ACCESS_FS_EXECUTE    |
+                      LANDLOCK_ACCESS_FS_WRITE_FILE |
+                      LANDLOCK_ACCESS_FS_READ_FILE;
+    if (abi >= 3)
+        rights |= LANDLOCK_ACCESS_FS_TRUNCATE;
+    return rights;
+}
+
 /* ── apply_landlock ────────────────────────────────────────────────── */
 
 int apply_landlock(const Policy *policy)
@@ -178,6 +200,23 @@ int apply_landlock(const Policy *policy)
         uint64_t allowed = policy_access_to_landlock(rule->access, abi);
         /* Mask to only rights we declared as handled */
         allowed &= handled;
+
+        /*
+         * If the path is a regular file (not a directory), strip
+         * directory-only access rights.  Landlock returns EINVAL
+         * if directory-only rights are used on a file fd.
+         */
+        struct stat st;
+        if (fstat(path_fd, &st) == 0 && !S_ISDIR(st.st_mode)) {
+            allowed &= file_valid_rights(abi);
+        }
+
+        /* If no rights remain after masking, skip this rule —
+         * adding a rule with zero allowed_access is EINVAL. */
+        if (allowed == 0) {
+            close(path_fd);
+            continue;
+        }
 
         struct landlock_path_beneath_attr path_attr;
         memset(&path_attr, 0, sizeof(path_attr));
