@@ -75,8 +75,10 @@ export class ToolOrchestrator {
     let result: ToolExecutionResult;
 
     if (
-      this.options?.sandbox != null &&
-      this.options.sandboxedTools != null &&
+      this.options?.sandbox !== null &&
+      this.options?.sandbox !== undefined &&
+      this.options.sandboxedTools !== null &&
+      this.options.sandboxedTools !== undefined &&
       this.options.sandboxedTools.includes(request.toolName)
     ) {
       result = await this.executeSandboxed(

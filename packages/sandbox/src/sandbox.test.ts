@@ -26,7 +26,7 @@ vi.mock("./detect.js", () => ({
 }));
 
 vi.mock("./helper.js", () => ({
-  findHelper: (...args: unknown[]) => mockFindHelper(),
+  findHelper: () => mockFindHelper(),
 }));
 
 const { Sandbox } = await import("./sandbox.js");
