@@ -32,7 +32,11 @@ importers:
         specifier: workspace:*
         version: link:../sandbox
 
-  packages/gateway: {}
+  packages/gateway:
+    dependencies:
+      '@safeclaw/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/sandbox: {}
 
