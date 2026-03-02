@@ -2,6 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { PassThrough } from "node:stream";
 import { bootstrapAgent } from "./bootstrap.js";
 import type { BootstrapDeps } from "./bootstrap.js";
+import {
+  AuditLog,
+  CapabilityRegistry,
+  SessionManager,
+} from "@safeclaw/core";
 
 function createMockDeps(
   overrides: Partial<BootstrapDeps> = {},
@@ -140,6 +145,13 @@ describe("bootstrapAgent", () => {
 
     const result = await bootstrapAgent(deps);
     expect(result.agent).toBeDefined();
+  });
+
+  it("returns capabilityRegistry, auditLog, and sessionManager", async () => {
+    const result = await bootstrapAgent(createMockDeps());
+    expect(result.capabilityRegistry).toBeInstanceOf(CapabilityRegistry);
+    expect(result.auditLog).toBeInstanceOf(AuditLog);
+    expect(result.sessionManager).toBeInstanceOf(SessionManager);
   });
 
   it("calls readPassphrase with correct prompt", async () => {

@@ -13,6 +13,7 @@ import {
   SimpleToolRegistry,
   ToolOrchestrator,
   createBuiltinTools,
+  AuditLog,
 } from "@safeclaw/core";
 import type { CopilotToken, CopilotModel, Capability } from "@safeclaw/core";
 import {
@@ -46,6 +47,8 @@ export interface BootstrapDeps {
 export interface BootstrapResult {
   agent: Agent;
   sessionManager: SessionManager;
+  capabilityRegistry: CapabilityRegistry;
+  auditLog: AuditLog;
 }
 
 const BUILTIN_CAPABILITIES: Capability[] = [
@@ -141,8 +144,9 @@ export async function bootstrapAgent(
     orchestrator,
   );
   const sessionManager = new SessionManager();
+  const auditLog = new AuditLog();
 
-  return { agent, sessionManager };
+  return { agent, sessionManager, capabilityRegistry, auditLog };
 }
 
 interface ResolveKeyOpts {
