@@ -13,3 +13,5 @@ export {
   bashTool,
   webFetchTool,
 } from "./builtin/index.js";
+export { AuditLog } from "./audit-log.js";
+export type { AuditEntry } from "./audit-log.js";

@@ -1,52 +1,14 @@
 import type {
   CapabilityGrant,
-  ToolExecutionRequest,
-  ToolExecutionResult,
   SessionMetadata,
 } from "@safeclaw/core";
 import type { CapabilityRegistry } from "@safeclaw/core";
 import type { SessionManager } from "@safeclaw/core";
+import { AuditLog } from "@safeclaw/core";
+import type { AuditEntry } from "@safeclaw/core";
 
-// --- AuditLog ---
-
-export interface AuditEntry {
-  timestamp: Date;
-  request: ToolExecutionRequest;
-  result: ToolExecutionResult;
-}
-
-export class AuditLog {
-  private readonly maxEntries: number;
-  private entries: AuditEntry[] = [];
-
-  constructor(maxEntries = 100) {
-    this.maxEntries = maxEntries;
-  }
-
-  record(request: ToolExecutionRequest, result: ToolExecutionResult): void {
-    const entry: AuditEntry = {
-      timestamp: new Date(),
-      request,
-      result,
-    };
-    this.entries.push(entry);
-    if (this.entries.length > this.maxEntries) {
-      this.entries = this.entries.slice(this.entries.length - this.maxEntries);
-    }
-  }
-
-  getEntries(): AuditEntry[] {
-    return [...this.entries];
-  }
-
-  clear(): void {
-    this.entries = [];
-  }
-
-  get size(): number {
-    return this.entries.length;
-  }
-}
+export { AuditLog };
+export type { AuditEntry };
 
 // --- runAudit ---
 
@@ -78,14 +40,25 @@ function formatConstraints(grant: CapabilityGrant): string {
   const c = grant.constraints;
   if (!c) return grant.capability;
 
+  const parts: string[] = [];
+
   if (c.paths && c.paths.length > 0) {
-    return `${grant.capability} [${c.paths.join(", ")}]`;
+    parts.push(`${c.paths.join(", ")}`);
   }
   if (c.hosts && c.hosts.length > 0) {
-    return `${grant.capability} [${c.hosts.join(", ")}]`;
+    parts.push(`${c.hosts.join(", ")}`);
   }
   if (c.executables && c.executables.length > 0) {
-    return `${grant.capability} [${c.executables.join(", ")}]`;
+    parts.push(`${c.executables.join(", ")}`);
+  }
+  for (const [key, values] of Object.entries(c)) {
+    if (key !== "paths" && key !== "hosts" && key !== "executables" && Array.isArray(values)) {
+      parts.push(`${key}: ${values.join(", ")}`);
+    }
+  }
+
+  if (parts.length > 0) {
+    return `${grant.capability} [${parts.join(", ")}]`;
   }
   return grant.capability;
 }
@@ -176,7 +149,7 @@ export function runAudit(options: AuditOptions): AuditReport {
   };
 
   if (format === "json") {
-    output.write(JSON.stringify(report, dateReplacer, 2));
+    output.write(JSON.stringify(report, dateReplacer, 2) + "\n");
   } else {
     formatTextReport(output, report);
   }
