@@ -18,7 +18,7 @@
    */
   function renderMarkdown(text) {
     // Escape HTML first
-    var html = text
+    let html = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
@@ -44,15 +44,15 @@
    * Append a message to the chat display.
    */
   function addMessage(role, content) {
-    var div = document.createElement("div");
+    const div = document.createElement("div");
     div.className = "message " + role;
 
-    var senderEl = document.createElement("div");
+    const senderEl = document.createElement("div");
     senderEl.className = "sender";
     senderEl.textContent = role === "user" ? "You" : "SafeClaw";
     div.appendChild(senderEl);
 
-    var bodyEl = document.createElement("div");
+    const bodyEl = document.createElement("div");
     bodyEl.className = "body";
     bodyEl.innerHTML = renderMarkdown(content);
     div.appendChild(bodyEl);
@@ -67,7 +67,7 @@
    * Show typing indicator.
    */
   function showTyping() {
-    var div = document.createElement("div");
+    const div = document.createElement("div");
     div.className = "typing-indicator";
     div.id = "typing";
     div.textContent = "SafeClaw is thinking...";
@@ -79,7 +79,7 @@
    * Remove typing indicator.
    */
   function hideTyping() {
-    var el = document.getElementById("typing");
+    const el = document.getElementById("typing");
     if (el) el.remove();
   }
 
@@ -87,12 +87,12 @@
    * Send a message to the gateway API.
    */
   async function sendMessage(content) {
-    var headers = { "Content-Type": "application/json" };
+    const headers = { "Content-Type": "application/json" };
     if (AUTH_TOKEN) {
       headers["Authorization"] = "Bearer " + AUTH_TOKEN;
     }
 
-    var response = await fetch(GATEWAY_URL, {
+    const response = await fetch(GATEWAY_URL, {
       method: "POST",
       headers: headers,
       body: JSON.stringify({
@@ -114,7 +114,7 @@
   formEl.addEventListener("submit", function (e) {
     e.preventDefault();
 
-    var content = inputEl.value.trim();
+    const content = inputEl.value.trim();
     if (!content) return;
 
     inputEl.value = "";
@@ -127,7 +127,7 @@
     sendMessage(content)
       .then(function (data) {
         hideTyping();
-        var reply =
+        const reply =
           typeof data.payload === "string"
             ? data.payload
             : typeof data.payload === "object" && data.payload !== null && "content" in data.payload

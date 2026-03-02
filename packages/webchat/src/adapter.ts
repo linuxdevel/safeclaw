@@ -5,19 +5,17 @@ import {
   type ServerResponse,
 } from "node:http";
 import { readFile } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { join, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ChannelAdapter,
   InboundMessage,
   OutboundMessage,
+  PeerIdentity,
 } from "@safeclaw/core";
-import type { PeerIdentity } from "@safeclaw/core";
 
-const STATIC_DIR = join(
-  fileURLToPath(import.meta.url),
-  "..",
-  "static",
+const STATIC_DIR = resolve(
+  join(fileURLToPath(import.meta.url), "..", "static"),
 );
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -152,20 +150,32 @@ export class WebChatAdapter implements ChannelAdapter {
   ): Promise<void> {
     const url = req.url === "/" ? "/index.html" : (req.url ?? "/index.html");
 
-    // Security: only serve known extensions, no path traversal
+    // Security: only serve known extensions
     const ext = extname(url);
     const contentType = CONTENT_TYPES[ext];
-    if (!contentType || url.includes("..")) {
+    if (!contentType) {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");
       return;
     }
 
-    const filePath = join(STATIC_DIR, url);
+    // Security: resolve-based path traversal defense
+    const filePath = resolve(join(STATIC_DIR, url));
+    if (!filePath.startsWith(STATIC_DIR)) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return;
+    }
 
     try {
       const data = await readFile(filePath);
-      res.writeHead(200, { "Content-Type": contentType });
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy":
+          "default-src 'self'; style-src 'self' 'unsafe-inline'",
+      });
       res.end(data);
     } catch {
       res.writeHead(404, { "Content-Type": "text/plain" });
