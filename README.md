@@ -50,8 +50,8 @@ After install, run `safeclaw onboard` for first-time setup.
 | Audit logging (in-memory) | Done | Per-execution recording with rotation |
 | CI/CD (GitHub Actions) | Done | Lint, build, typecheck, test, release |
 | Install script with vault preservation | Done | Upgrade-safe, preserves vault files |
-| OS-level sandboxing (Landlock + seccomp + namespaces) | **WIP** | Kernel detection works; execution stubbed (native bindings required) |
-| Sandbox-enforced tool execution | **WIP** | Tools run directly on host; sandbox.execute() not yet implemented |
+| OS-level sandboxing (Landlock + seccomp + namespaces) | **WIP** | Namespace isolation works (unshare); Landlock/seccomp require native helper (spec written) |
+| Sandbox-enforced tool execution | Done | Bash tool routed through sandbox; audit log records sandboxed status |
 | `safeclaw audit` CLI command | Done | Wired into CLI; calls bootstrapAgent and runAudit |
 | Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
 | Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |

@@ -24,6 +24,7 @@ import {
   KeyringProvider as DefaultKeyringProvider,
   deriveKeyFromPassphrase as defaultDeriveKey,
 } from "@safeclaw/vault";
+import { Sandbox, DEFAULT_POLICY } from "@safeclaw/sandbox";
 import { readPassphrase as defaultReadPassphrase } from "../readPassphrase.js";
 
 export interface BootstrapDeps {
@@ -157,7 +158,24 @@ export async function bootstrapAgent(
     toolRegistry.register(tool);
   }
 
-  const orchestrator = new ToolOrchestrator(enforcer, toolRegistry);
+  let sandbox: Sandbox | undefined;
+  try {
+    sandbox = new Sandbox(DEFAULT_POLICY);
+  } catch (err: unknown) {
+    // Sandbox not supported on this system — fall back to unsandboxed
+    const detail = err instanceof Error ? err.message : String(err);
+    output.write(
+      `Warning: sandbox not available (${detail}), tools will run unsandboxed\n`,
+    );
+  }
+
+  const orchestrator = new ToolOrchestrator(
+    enforcer,
+    toolRegistry,
+    sandbox
+      ? { sandbox, sandboxedTools: ["bash"] }
+      : undefined,
+  );
   const agent = new Agent(
     { ...DEFAULT_AGENT_CONFIG, model, skillId: manifest.id },
     client,

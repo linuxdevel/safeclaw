@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { CapabilityEnforcer } from "../capabilities/enforcer.js";
 import { CapabilityRegistry } from "../capabilities/registry.js";
 import type { CapabilityGrant } from "../capabilities/types.js";
 import { ToolOrchestrator, SimpleToolRegistry } from "./orchestrator.js";
 import type { ToolHandler } from "./types.js";
+import { AuditLog } from "./audit-log.js";
 
 function grantCapability(
   registry: CapabilityRegistry,
@@ -210,5 +211,347 @@ describe("SimpleToolRegistry", () => {
     expect(all).toHaveLength(2);
     expect(all.map((h) => h.name)).toContain("tool-a");
     expect(all.map((h) => h.name)).toContain("tool-b");
+  });
+});
+
+describe("sandboxed execution", () => {
+  function createSandboxedOrchestrator(
+    mockSandbox: { execute: ReturnType<typeof vi.fn> },
+    sandboxedTools: string[],
+  ) {
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "process:spawn",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        name: "bash",
+        requiredCapabilities: ["process:spawn"],
+        execute: async () => "direct-output",
+      }),
+    );
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      sandbox: mockSandbox,
+      sandboxedTools,
+    });
+
+    return { orchestrator, toolRegistry };
+  }
+
+  it("reports sandboxed: true when sandbox is provided and tool is eligible", async () => {
+    const mockSandbox = {
+      execute: vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: "sandboxed output",
+        stderr: "",
+        durationMs: 5,
+        killed: false,
+      }),
+    };
+
+    const { orchestrator } = createSandboxedOrchestrator(mockSandbox, ["bash"]);
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "bash",
+      args: { command: "echo hello" },
+    });
+
+    expect(result.sandboxed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.output).toBe("sandboxed output");
+    expect(mockSandbox.execute).toHaveBeenCalledWith("/bin/bash", [
+      "-c",
+      "echo hello",
+    ]);
+  });
+
+  it("falls back to direct execution when no sandbox provided", async () => {
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "process:spawn",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        name: "bash",
+        requiredCapabilities: ["process:spawn"],
+        execute: async () => "direct-output",
+      }),
+    );
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry);
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "bash",
+      args: { command: "echo hello" },
+    });
+
+    expect(result.sandboxed).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.output).toBe("direct-output");
+  });
+
+  it("falls back to direct execution for non-sandboxed tools", async () => {
+    const mockSandbox = {
+      execute: vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: "sandboxed output",
+        stderr: "",
+        durationMs: 5,
+        killed: false,
+      }),
+    };
+
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "fs:read",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        name: "test-tool",
+        requiredCapabilities: ["fs:read"],
+        execute: async () => "direct-output",
+      }),
+    );
+
+    // Only "bash" is sandboxed, not "test-tool"
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      sandbox: mockSandbox,
+      sandboxedTools: ["bash"],
+    });
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "test-tool",
+      args: {},
+    });
+
+    expect(result.sandboxed).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.output).toBe("direct-output");
+    expect(mockSandbox.execute).not.toHaveBeenCalled();
+  });
+
+  it("returns error when sandbox execution fails", async () => {
+    const mockSandbox = {
+      execute: vi.fn().mockRejectedValue(new Error("sandbox-crash")),
+    };
+
+    const { orchestrator } = createSandboxedOrchestrator(mockSandbox, ["bash"]);
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "bash",
+      args: { command: "echo hello" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.sandboxed).toBe(true);
+    expect(result.error).toContain("sandbox-crash");
+  });
+
+  it("reports sandbox failure when exit code non-zero", async () => {
+    const mockSandbox = {
+      execute: vi.fn().mockResolvedValue({
+        exitCode: 1,
+        stdout: "",
+        stderr: "command not found",
+        durationMs: 3,
+        killed: false,
+      }),
+    };
+
+    const { orchestrator } = createSandboxedOrchestrator(mockSandbox, ["bash"]);
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "bash",
+      args: { command: "bad-command" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.sandboxed).toBe(true);
+    expect(result.error).toContain("command not found");
+  });
+
+  it("returns error for tool with no sandbox command mapping", async () => {
+    const mockSandbox = {
+      execute: vi.fn(),
+    };
+
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "fs:read",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        name: "unknown-tool",
+        requiredCapabilities: ["fs:read"],
+      }),
+    );
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      sandbox: mockSandbox,
+      sandboxedTools: ["unknown-tool"],
+    });
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "unknown-tool",
+      args: {},
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No sandbox command mapping");
+    expect(result.error).toContain("unknown-tool");
+  });
+});
+
+describe("audit log recording", () => {
+  it("records sandboxed execution in audit log", async () => {
+    const auditLog = new AuditLog();
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "process:spawn",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        name: "bash",
+        requiredCapabilities: ["process:spawn"],
+        execute: async () => "direct-output",
+      }),
+    );
+
+    const mockSandbox = {
+      execute: vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: "sandboxed output",
+        stderr: "",
+        durationMs: 5,
+        killed: false,
+      }),
+    };
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      sandbox: mockSandbox,
+      sandboxedTools: ["bash"],
+      auditLog,
+    });
+
+    await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "bash",
+      args: { command: "echo test" },
+    });
+
+    const entries = auditLog.getEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.result.sandboxed).toBe(true);
+  });
+
+  it("records direct execution in audit log", async () => {
+    const auditLog = new AuditLog();
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "fs:read",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(createHandler());
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      auditLog,
+    });
+
+    await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "test-tool",
+      args: {},
+    });
+
+    const entries = auditLog.getEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.result.sandboxed).toBe(false);
+    expect(entries[0]!.request.toolName).toBe("test-tool");
+  });
+
+  it("does not fail when auditLog is not provided", async () => {
+    // Existing behavior — no audit log, no errors
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "fs:read",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(createHandler());
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry);
+
+    const result = await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "test-tool",
+      args: {},
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("records failed executions in audit log", async () => {
+    const auditLog = new AuditLog();
+    const capRegistry = new CapabilityRegistry();
+    grantCapability(capRegistry, {
+      skillId: "test-skill",
+      capability: "fs:read",
+    });
+    const enforcer = new CapabilityEnforcer(capRegistry);
+
+    const toolRegistry = new SimpleToolRegistry();
+    toolRegistry.register(
+      createHandler({
+        execute: async () => {
+          throw new Error("boom");
+        },
+      }),
+    );
+
+    const orchestrator = new ToolOrchestrator(enforcer, toolRegistry, {
+      auditLog,
+    });
+
+    await orchestrator.execute({
+      skillId: "test-skill",
+      toolName: "test-tool",
+      args: {},
+    });
+
+    const entries = auditLog.getEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.result.success).toBe(false);
   });
 });

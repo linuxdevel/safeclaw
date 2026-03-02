@@ -111,23 +111,29 @@ describe("Sandbox escape prevention", () => {
     });
   });
 
-  describe("execute() is a stub that cannot be bypassed", () => {
-    it("throws 'not yet implemented' on execute()", async () => {
+  describe("execute() enforces sandbox policy", () => {
+    it("returns a result with stdout and exitCode", async () => {
       mockAssert.mockReturnValue(FULL_CAPS);
 
       const sandbox = new Sandbox(DEFAULT_POLICY);
-      await expect(sandbox.execute("echo", ["hello"])).rejects.toThrow(
-        /not yet implemented/,
-      );
+      const result = await sandbox.execute("/bin/echo", ["hello"]);
+
+      expect(result.stdout).toContain("hello");
+      expect(result.exitCode).toBe(0);
+      expect(result.killed).toBe(false);
+      expect(result.killReason).toBeUndefined();
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it("throws even for empty command", async () => {
+    it("enforces timeout — kills long-running processes", async () => {
       mockAssert.mockReturnValue(FULL_CAPS);
 
-      const sandbox = new Sandbox(DEFAULT_POLICY);
-      await expect(sandbox.execute("", [])).rejects.toThrow(
-        /not yet implemented/,
-      );
+      const policy = { ...DEFAULT_POLICY, timeoutMs: 100 };
+      const sandbox = new Sandbox(policy);
+      const result = await sandbox.execute("/bin/sleep", ["10"]);
+
+      expect(result.killed).toBe(true);
+      expect(result.killReason).toBe("timeout");
     });
   });
 });

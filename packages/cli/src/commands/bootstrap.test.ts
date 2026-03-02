@@ -1,12 +1,21 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PassThrough } from "node:stream";
-import { bootstrapAgent } from "./bootstrap.js";
 import type { BootstrapDeps } from "./bootstrap.js";
 import {
   AuditLog,
   CapabilityRegistry,
   SessionManager,
 } from "@safeclaw/core";
+const MockSandbox = vi.fn();
+vi.mock("@safeclaw/sandbox", () => ({
+  Sandbox: MockSandbox,
+  DEFAULT_POLICY: {
+    namespaces: { pid: true, net: true, mnt: true, user: true },
+    timeoutMs: 30_000,
+  },
+}));
+
+const { bootstrapAgent } = await import("./bootstrap.js");
 
 const FAKE_MANIFEST = JSON.stringify({
   id: "builtin",
@@ -61,6 +70,10 @@ function createMockDeps(
 }
 
 describe("bootstrapAgent", () => {
+  beforeEach(() => {
+    MockSandbox.mockReset();
+  });
+
   it("returns agent and sessionManager when vault exists with passphrase key", async () => {
     const deps = createMockDeps();
 
@@ -238,5 +251,33 @@ describe("bootstrapAgent", () => {
       deps.input,
       deps.output,
     );
+  });
+
+  it("constructs Sandbox with DEFAULT_POLICY", async () => {
+    const deps = createMockDeps();
+
+    await bootstrapAgent(deps);
+
+    expect(MockSandbox).toHaveBeenCalledWith({
+      namespaces: { pid: true, net: true, mnt: true, user: true },
+      timeoutMs: 30_000,
+    });
+  });
+
+  it("falls back gracefully when Sandbox constructor throws", async () => {
+    MockSandbox.mockImplementation(() => {
+      throw new Error("sandbox not supported");
+    });
+    const output = new PassThrough();
+    const chunks: Buffer[] = [];
+    output.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+    const deps = createMockDeps({ output });
+
+    const result = await bootstrapAgent(deps);
+
+    expect(result.agent).toBeDefined();
+    const written = Buffer.concat(chunks).toString();
+    expect(written).toContain("sandbox not available");
   });
 });

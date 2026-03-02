@@ -1,4 +1,5 @@
 export { ToolOrchestrator, SimpleToolRegistry } from "./orchestrator.js";
+export type { OrchestratorOptions } from "./orchestrator.js";
 export type {
   ToolExecutionRequest,
   ToolExecutionResult,

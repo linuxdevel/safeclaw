@@ -1,11 +1,19 @@
+import type { Sandbox } from "@safeclaw/sandbox";
 import type { CapabilityEnforcer } from "../capabilities/enforcer.js";
 import { CapabilityDeniedError } from "../capabilities/enforcer.js";
+import type { AuditLog } from "./audit-log.js";
 import type {
   ToolExecutionRequest,
   ToolExecutionResult,
   ToolHandler,
   ToolRegistry,
 } from "./types.js";
+
+export interface OrchestratorOptions {
+  sandbox?: Pick<Sandbox, "execute">;
+  sandboxedTools?: string[];
+  auditLog?: AuditLog;
+}
 
 export class SimpleToolRegistry implements ToolRegistry {
   private handlers = new Map<string, ToolHandler>();
@@ -27,6 +35,7 @@ export class ToolOrchestrator {
   constructor(
     private readonly enforcer: CapabilityEnforcer,
     private readonly toolRegistry: ToolRegistry,
+    private readonly options?: OrchestratorOptions,
   ) {}
 
   async execute(request: ToolExecutionRequest): Promise<ToolExecutionResult> {
@@ -62,7 +71,66 @@ export class ToolOrchestrator {
       }
     }
 
-    // 3. Execute handler (v1: direct execution, no sandbox)
+    // 3. Route to sandbox or direct execution
+    let result: ToolExecutionResult;
+
+    if (
+      this.options?.sandbox != null &&
+      this.options.sandboxedTools != null &&
+      this.options.sandboxedTools.includes(request.toolName)
+    ) {
+      result = await this.executeSandboxed(
+        this.options.sandbox,
+        request,
+        start,
+      );
+    } else {
+      result = await this.executeDirect(handler, request, start);
+    }
+
+    this.options?.auditLog?.record(request, result);
+
+    return result;
+  }
+
+  private async executeSandboxed(
+    sandbox: Pick<Sandbox, "execute">,
+    request: ToolExecutionRequest,
+    start: number,
+  ): Promise<ToolExecutionResult> {
+    try {
+      const mapped = buildSandboxCommand(request.toolName, request.args);
+      const sandboxResult = await sandbox.execute(
+        mapped.command,
+        mapped.args,
+      );
+      return {
+        success: sandboxResult.exitCode === 0,
+        output: sandboxResult.stdout,
+        error:
+          sandboxResult.exitCode !== 0 ? sandboxResult.stderr : undefined,
+        durationMs: performance.now() - start,
+        sandboxed: true,
+      };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        output: "",
+        error:
+          err instanceof Error
+            ? err.message
+            : `Sandbox execution failed: ${String(err)}`,
+        durationMs: performance.now() - start,
+        sandboxed: true,
+      };
+    }
+  }
+
+  private async executeDirect(
+    handler: ToolHandler,
+    request: ToolExecutionRequest,
+    start: number,
+  ): Promise<ToolExecutionResult> {
     try {
       const output = await handler.execute(request.args);
       return {
@@ -83,5 +151,20 @@ export class ToolOrchestrator {
         sandboxed: false,
       };
     }
+  }
+}
+
+function buildSandboxCommand(
+  toolName: string,
+  args: Record<string, unknown>,
+): { command: string; args: string[] } {
+  switch (toolName) {
+    case "bash":
+      return {
+        command: "/bin/bash",
+        args: ["-c", String(args["command"] ?? "")],
+      };
+    default:
+      throw new Error(`No sandbox command mapping for tool: "${toolName}"`);
   }
 }
