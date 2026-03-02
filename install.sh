@@ -109,30 +109,46 @@ success "Node.js $NODE_VERSION detected — OK"
 
 # ---------------------------------------------------------------------------
 # Handle existing installation
+#
+# On upgrade we preserve user data (vault.json, vault.json.salt) and
+# overwrite everything else.  --force skips the confirmation prompt.
 # ---------------------------------------------------------------------------
+VAULT_FILES=("vault.json" "vault.json.salt")
+
 if [ -d "$INSTALL_DIR" ]; then
-  if [ "$FORCE" = true ]; then
-    warn "Removing existing installation at $INSTALL_DIR (--force)"
-    rm -rf "$INSTALL_DIR"
-  else
+  if [ "$FORCE" != true ] && [ -t 0 ]; then
     warn "An existing SafeClaw installation was found at $INSTALL_DIR"
-    printf "Remove it and reinstall? [y/N] "
-    # When piped, stdin may not be a terminal — default to abort
-    if [ -t 0 ]; then
-      read -r REPLY
-    else
-      REPLY=""
-    fi
+    printf "Upgrade in place? (vault data is preserved) [Y/n] "
+    read -r REPLY
     case "$REPLY" in
-      [yY]|[yY][eE][sS])
-        rm -rf "$INSTALL_DIR"
-        ;;
-      *)
-        error "Aborted. Re-run with --force to skip this prompt."
+      [nN]|[nN][oO])
+        error "Aborted."
         exit 1
         ;;
     esac
   fi
+
+  info "Upgrading existing installation..."
+
+  # Back up vault files that exist
+  VAULT_TMPDIR="$(mktemp -d)"
+  for f in "${VAULT_FILES[@]}"; do
+    if [ -f "$INSTALL_DIR/$f" ]; then
+      cp -p "$INSTALL_DIR/$f" "$VAULT_TMPDIR/$f"
+    fi
+  done
+
+  # Wipe the install directory
+  rm -rf "$INSTALL_DIR"
+
+  # Restore vault files (mkdir first since we just removed the dir)
+  mkdir -p "$INSTALL_DIR"
+  for f in "${VAULT_FILES[@]}"; do
+    if [ -f "$VAULT_TMPDIR/$f" ]; then
+      mv "$VAULT_TMPDIR/$f" "$INSTALL_DIR/$f"
+    fi
+  done
+  rm -rf "$VAULT_TMPDIR"
 fi
 
 # ---------------------------------------------------------------------------
