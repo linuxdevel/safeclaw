@@ -24,17 +24,42 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@safeclaw/core':
+        specifier: workspace:*
+        version: link:../core
+      '@safeclaw/gateway':
+        specifier: workspace:*
+        version: link:../gateway
+      '@safeclaw/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@safeclaw/vault':
+        specifier: workspace:*
+        version: link:../vault
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@safeclaw/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
 
-  packages/gateway: {}
+  packages/gateway:
+    dependencies:
+      '@safeclaw/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/sandbox: {}
 
   packages/vault: {}
 
-  packages/webchat: {}
+  packages/webchat:
+    dependencies:
+      '@safeclaw/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

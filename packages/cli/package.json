@@ -8,5 +8,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "@safeclaw/core": "workspace:*",
+    "@safeclaw/gateway": "workspace:*",
+    "@safeclaw/sandbox": "workspace:*",
+    "@safeclaw/vault": "workspace:*"
+  },
   "files": ["dist"]
 }
