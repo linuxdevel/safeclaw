@@ -1,5 +1,6 @@
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import {
   requestDeviceCode as defaultRequestDeviceCode,
   pollForToken as defaultPollForToken,
@@ -50,6 +51,7 @@ export interface OnboardOptions {
   keyringProvider?: { store(key: Buffer): void; retrieve(): Buffer | null };
   deriveKey?: (passphrase: string, salt?: Buffer) => Promise<Buffer>;
   generateKeyPair?: () => SigningKeyPair;
+  writeSalt?: (saltPath: string, hexSalt: string) => void;
 }
 
 export interface OnboardResult {
@@ -59,6 +61,7 @@ export interface OnboardResult {
   keySource: KeySource;
   signingKeyGenerated: boolean;
   selectedModel: CopilotModel;
+  saltPath?: string;
 }
 
 function print(output: NodeJS.WritableStream, message: string): void {
@@ -163,24 +166,31 @@ async function authenticate(
     return { authenticated: false, accessToken: undefined };
   }
 
-  const config: CopilotAuthConfig = {
-    clientId: COPILOT_CLIENT_ID,
-    scopes: COPILOT_SCOPES,
-  };
+  try {
+    const config: CopilotAuthConfig = {
+      clientId: COPILOT_CLIENT_ID,
+      scopes: COPILOT_SCOPES,
+    };
 
-  const deviceCode = await reqDeviceCode(config);
+    const deviceCode = await reqDeviceCode(config);
 
-  print(output, `\n  Open: ${deviceCode.verification_uri}`);
-  print(output, `  Enter code: ${deviceCode.user_code}\n`);
-  print(output, "  Waiting for authorization...");
+    print(output, `\n  Open: ${deviceCode.verification_uri}`);
+    print(output, `  Enter code: ${deviceCode.user_code}\n`);
+    print(output, "  Waiting for authorization...");
 
-  const token = await poll(config, deviceCode.device_code, deviceCode.interval);
+    const token = await poll(config, deviceCode.device_code, deviceCode.interval);
 
-  await getCopilot(token.access_token);
+    await getCopilot(token.access_token);
 
-  print(output, "  Authenticated successfully.\n");
+    print(output, "  Authenticated successfully.\n");
 
-  return { authenticated: true, accessToken: token.access_token };
+    return { authenticated: true, accessToken: token.access_token };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    print(output, `  Authentication failed: ${message}`);
+    print(output, "  Continuing without authentication.\n");
+    return { authenticated: false, accessToken: undefined };
+  }
 }
 
 async function createVaultStep(
@@ -190,9 +200,11 @@ async function createVaultStep(
   createVaultFn: (path: string, key: Buffer) => { set(name: string, value: string): void; save(): void },
   keyring: { store(key: Buffer): void; retrieve(): Buffer | null },
   deriveKey: (passphrase: string, salt?: Buffer) => Promise<Buffer>,
+  writeSalt: (saltPath: string, hexSalt: string) => void,
 ): Promise<{
   vault: { set(name: string, value: string): void; save(): void };
   keySource: KeySource;
+  saltPath?: string;
 }> {
   print(output, "=== Step 3: Create Vault ===\n");
   print(output, "  Choose key source:");
@@ -201,8 +213,17 @@ async function createVaultStep(
 
   const choice = await reader.ask("Select (1 or 2): ");
 
-  if (choice.trim() === "2") {
-    const passphrase = await reader.ask("Enter passphrase: ");
+  const usePassphrase = async (): Promise<{
+    vault: { set(name: string, value: string): void; save(): void };
+    keySource: KeySource;
+    saltPath?: string;
+  }> => {
+    let passphrase: string;
+    for (;;) {
+      passphrase = await reader.ask("Enter passphrase: ");
+      if (passphrase.length >= 8) break;
+      print(output, "  Passphrase must be at least 8 characters. Try again.");
+    }
     const confirm = await reader.ask("Confirm passphrase: ");
 
     if (passphrase !== confirm) {
@@ -213,13 +234,26 @@ async function createVaultStep(
     const key = await deriveKey(passphrase, salt);
     const vault = createVaultFn(vaultPath, key);
 
+    const sp = vaultPath + ".salt";
+    writeSalt(sp, salt.toString("hex"));
+
     print(output, "  Vault created with passphrase key.\n");
-    return { vault, keySource: "passphrase" };
+    return { vault, keySource: "passphrase", saltPath: sp };
+  };
+
+  if (choice.trim() === "2") {
+    return usePassphrase();
   }
 
   // Default to keyring
   const key = randomBytes(32);
-  keyring.store(key);
+  try {
+    keyring.store(key);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    print(output, `  Warning: Keyring unavailable (${message}). Falling back to passphrase.`);
+    return usePassphrase();
+  }
   const vault = createVaultFn(vaultPath, key);
 
   print(output, "  Vault created with OS keyring.\n");
@@ -292,6 +326,8 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     keyringProvider: keyring = new DefaultKeyringProvider(),
     deriveKey = defaultDeriveKey,
     generateKeyPair: genKeyPair = defaultGenerateKeyPair,
+    writeSalt = (saltPath: string, hexSalt: string) =>
+      writeFileSync(saltPath, hexSalt, { mode: 0o600 }),
   } = options;
 
   const rl = createInterface({ input, output, terminal: false });
@@ -314,13 +350,14 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     );
 
     // Step 3: Create vault
-    const { vault, keySource } = await createVaultStep(
+    const { vault, keySource, saltPath } = await createVaultStep(
       reader,
       output,
       vaultPath,
       createVaultFn,
       keyring,
       deriveKey,
+      writeSalt,
     );
 
     // Store access token if authenticated
@@ -346,6 +383,7 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
       keySource,
       signingKeyGenerated,
       selectedModel,
+      saltPath,
     };
   } finally {
     reader.close();

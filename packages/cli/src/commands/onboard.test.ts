@@ -97,6 +97,7 @@ function createBaseOptions(
     keyringProvider: createMockKeyringProvider(),
     deriveKey: vi.fn().mockResolvedValue(Buffer.alloc(32, 0xaa)),
     generateKeyPair: () => mockKeyPair,
+    writeSalt: vi.fn(),
   };
 }
 
@@ -352,5 +353,96 @@ describe("runOnboarding", () => {
     expect(out).toContain("gpt-4.1");
     expect(out).toContain("gemini-2.5-pro");
     expect(out).toContain("o4-mini");
+  });
+
+  it("throws when passphrases do not match", async () => {
+    simulateInput(input, "n", "2", "my-secret-pass", "different-pass", "");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+    };
+
+    await expect(runOnboarding(options)).rejects.toThrow(
+      "Passphrases do not match",
+    );
+  });
+
+  it("falls back to default model for out-of-range selection", async () => {
+    simulateInput(input, "n", "1", "99");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.selectedModel).toBe("claude-sonnet-4");
+
+    const out = readOutput(output);
+    expect(out).toContain("Invalid selection, using default.");
+  });
+
+  it("continues with authenticated: false when requestDeviceCode rejects", async () => {
+    simulateInput(input, "y", "1", "");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+      requestDeviceCode: vi
+        .fn()
+        .mockRejectedValue(new Error("network timeout")),
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.authenticated).toBe(false);
+    expect(result.vaultCreated).toBe(true);
+
+    const out = readOutput(output);
+    expect(out).toContain("Authentication failed: network timeout");
+  });
+
+  it("persists salt file when using passphrase path", async () => {
+    simulateInput(input, "n", "2", "my-secret-pass", "my-secret-pass", "");
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.keySource).toBe("passphrase");
+    expect(result.saltPath).toBe("/tmp/test-vault.json.salt");
+    expect(options.writeSalt).toHaveBeenCalledWith(
+      "/tmp/test-vault.json.salt",
+      expect.stringMatching(/^[0-9a-f]{32}$/),
+    );
+  });
+
+  it("falls back to passphrase when keyring throws", async () => {
+    simulateInput(input, "n", "1", "my-secret-pass", "my-secret-pass", "");
+
+    const failingKeyring = {
+      store: vi.fn().mockImplementation(() => {
+        throw new Error("D-Bus not available");
+      }),
+      retrieve: vi.fn().mockReturnValue(null),
+    };
+
+    const options: OnboardOptions = {
+      ...createBaseOptions(input, output),
+      vaultPath: "/tmp/test-vault.json",
+      keyringProvider: failingKeyring,
+    };
+
+    const result = await runOnboarding(options);
+
+    expect(result.keySource).toBe("passphrase");
+    const out = readOutput(output);
+    expect(out).toContain("Keyring unavailable");
+    expect(out).toContain("D-Bus not available");
   });
 });
