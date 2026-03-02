@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.tgz
 *.tar.gz
+*.tsbuildinfo
 .env
 .env.*
 coverage/
