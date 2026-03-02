@@ -172,30 +172,36 @@ describe("Sandbox.execute() helper integration", () => {
     mockFindHelper.mockReturnValue(undefined);
   });
 
-  it("sets enforcement.namespaces=true even without helper", async () => {
-    mockFindHelper.mockReturnValue(undefined);
+  it.skipIf(!canUnshareUser)(
+    "sets enforcement.namespaces=true even without helper",
+    async () => {
+      mockFindHelper.mockReturnValue(undefined);
 
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    const result = await sandbox.execute("/bin/true", []);
+      const sandbox = new Sandbox(DEFAULT_POLICY);
+      const result = await sandbox.execute("/bin/true", []);
 
-    expect(result.exitCode).toBe(0);
-    expect(result.enforcement).toBeDefined();
-    expect(result.enforcement!.namespaces).toBe(true);
-    expect(result.enforcement!.landlock).toBe(false);
-    expect(result.enforcement!.seccomp).toBe(false);
-    expect(result.enforcement!.capDrop).toBe(false);
-  });
+      expect(result.exitCode).toBe(0);
+      expect(result.enforcement).toBeDefined();
+      expect(result.enforcement!.namespaces).toBe(true);
+      expect(result.enforcement!.landlock).toBe(false);
+      expect(result.enforcement!.seccomp).toBe(false);
+      expect(result.enforcement!.capDrop).toBe(false);
+    },
+  );
 
-  it("sets full enforcement when helper is found", async () => {
-    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+  it.skipIf(!canUnshareUser)(
+    "sets full enforcement when helper is found",
+    async () => {
+      mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
 
-    const sandbox = new Sandbox(DEFAULT_POLICY);
-    const result = await sandbox.execute("/bin/true", []);
+      const sandbox = new Sandbox(DEFAULT_POLICY);
+      const result = await sandbox.execute("/bin/true", []);
 
-    expect(result.enforcement).toBeDefined();
-    expect(result.enforcement!.namespaces).toBe(true);
-    expect(result.enforcement!.landlock).toBe(true);
-    expect(result.enforcement!.seccomp).toBe(true);
-    expect(result.enforcement!.capDrop).toBe(true);
-  });
+      expect(result.enforcement).toBeDefined();
+      expect(result.enforcement!.namespaces).toBe(true);
+      expect(result.enforcement!.landlock).toBe(true);
+      expect(result.enforcement!.seccomp).toBe(true);
+      expect(result.enforcement!.capDrop).toBe(true);
+    },
+  );
 });
