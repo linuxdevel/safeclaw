@@ -49,7 +49,11 @@ importers:
 
   packages/vault: {}
 
-  packages/webchat: {}
+  packages/webchat:
+    dependencies:
+      '@safeclaw/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
