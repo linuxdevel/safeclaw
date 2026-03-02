@@ -79,7 +79,7 @@ describe("Permission escalation prevention", () => {
       ).toThrow(CapabilityDeniedError);
     });
 
-    it("path traversal: grant for /tmp/ — /tmp/../etc/passwd passes due to raw startsWith (known limitation)", () => {
+    it("path traversal: grant for /tmp/ rejects /tmp/../etc/passwd after normalization", () => {
       registry.grantCapability(
         makeGrant({
           capability: "fs:read",
@@ -87,13 +87,13 @@ describe("Permission escalation prevention", () => {
         }),
       );
 
-      // This documents the known limitation: the enforcer uses raw startsWith
-      // without path normalization, so /tmp/../etc/passwd matches /tmp/ prefix.
+      // Path normalization resolves /tmp/../etc/passwd to /etc/passwd,
+      // which is outside the /tmp/ grant — correctly denied.
       expect(() =>
         enforcer.check("test-skill", "fs:read", {
           path: "/tmp/../etc/passwd",
         }),
-      ).not.toThrow();
+      ).toThrow(CapabilityDeniedError);
     });
   });
 

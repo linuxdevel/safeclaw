@@ -82,7 +82,7 @@ export class Agent {
           }
 
           const result = await this.orchestrator.execute({
-            skillId: "agent",
+            skillId: this.config.skillId,
             toolName: toolCall.function.name,
             args,
           });

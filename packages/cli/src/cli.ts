@@ -7,6 +7,7 @@ import os from "node:os";
 import { CliAdapter } from "./adapter.js";
 import { runOnboarding } from "./commands/onboard.js";
 import { bootstrapAgent } from "./commands/bootstrap.js";
+import { runAudit } from "./commands/audit.js";
 import { setupChat } from "./commands/chat.js";
 import { Gateway, DEFAULT_GATEWAY_CONFIG } from "@safeclaw/gateway";
 import { WebChatAdapter } from "@safeclaw/webchat";
@@ -82,19 +83,23 @@ async function runOnboard(): Promise<void> {
   });
 }
 
-function runAuditCommand(_jsonFlag: boolean): void {
-  process.stdout.write(
-    "\nSafeClaw Security Audit\n",
-  );
-  process.stdout.write(
-    "=======================\n\n",
-  );
-  process.stdout.write(
-    "Audit requires a running SafeClaw instance (registry, sessionManager, auditLog).\n",
-  );
-  process.stdout.write(
-    "Run 'safeclaw serve' first, then use audit to inspect the running instance.\n\n",
-  );
+async function runAuditCommand(jsonFlag: boolean): Promise<void> {
+  const safeclawDir = path.join(os.homedir(), ".safeclaw");
+  const vaultPath = path.join(safeclawDir, "vault.json");
+
+  const { capabilityRegistry, sessionManager, auditLog } = await bootstrapAgent({
+    input: process.stdin,
+    output: process.stdout,
+    vaultPath,
+  });
+
+  runAudit({
+    output: process.stdout,
+    registry: capabilityRegistry,
+    sessionManager,
+    auditLog,
+    format: jsonFlag ? "json" : "text",
+  });
 }
 
 async function runServe(): Promise<void> {
@@ -176,7 +181,7 @@ async function main(): Promise<void> {
 
     case "audit": {
       const jsonFlag = args.includes("--json");
-      runAuditCommand(jsonFlag);
+      await runAuditCommand(jsonFlag);
       break;
     }
 

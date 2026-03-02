@@ -4,6 +4,7 @@ export interface AgentConfig {
   model: CopilotModel;
   systemPrompt: string;
   maxToolRounds: number;
+  skillId: string;
   temperature?: number | undefined;
   maxTokens?: number | undefined;
 }
@@ -19,6 +20,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   systemPrompt:
     "You are SafeClaw, a secure AI assistant. Follow user instructions carefully.",
   maxToolRounds: 10,
+  skillId: "builtin",
   temperature: undefined,
   maxTokens: undefined,
 };

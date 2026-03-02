@@ -17,6 +17,7 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     model: "claude-sonnet-4",
     systemPrompt: "You are a test assistant.",
     maxToolRounds: 10,
+    skillId: "builtin",
     temperature: undefined,
     maxTokens: undefined,
     ...overrides,
@@ -360,6 +361,45 @@ describe("Agent", () => {
       const toolMessage = addCalls.find((c) => c[0].role === "tool");
       expect(toolMessage).toBeDefined();
       expect(toolMessage![0].content).toContain("Permission denied");
+    });
+
+    it("uses configured skillId for tool execution requests", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
+
+      vi.mocked(client.chat)
+        .mockResolvedValueOnce(
+          makeResponse("", [
+            {
+              id: "call_skill",
+              type: "function",
+              function: {
+                name: "read_file",
+                arguments: JSON.stringify({ path: "/tmp/test" }),
+              },
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(makeResponse("Done."));
+
+      vi.mocked(orchestrator.execute).mockResolvedValue({
+        success: true,
+        output: "content",
+        durationMs: 2,
+        sandboxed: false,
+      });
+
+      const config = makeConfig({ skillId: "my-custom-skill" });
+      const agent = new Agent(config, client, orchestrator);
+      await agent.processMessage(session, "Read a file");
+
+      expect(orchestrator.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: "my-custom-skill",
+          toolName: "read_file",
+          args: { path: "/tmp/test" },
+        }),
+      );
     });
 
     it("passes temperature and maxTokens to chat request", async () => {

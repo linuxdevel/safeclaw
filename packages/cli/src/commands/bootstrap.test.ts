@@ -8,6 +8,27 @@ import {
   SessionManager,
 } from "@safeclaw/core";
 
+const FAKE_MANIFEST = JSON.stringify({
+  id: "builtin",
+  version: "1.0.0",
+  name: "SafeClaw Built-in Tools",
+  description: "Core tools",
+  signature: "aaa",
+  publicKey: "bbb",
+  requiredCapabilities: [
+    { capability: "fs:read", reason: "read" },
+    { capability: "fs:write", reason: "write" },
+    { capability: "process:spawn", reason: "spawn" },
+    { capability: "net:https", reason: "https" },
+  ],
+  tools: [],
+});
+
+function mockReadFile(p: string, _enc: BufferEncoding): string {
+  if (p.endsWith("manifest.json")) return FAKE_MANIFEST;
+  return "abcdef0123456789abcdef0123456789";
+}
+
 function createMockDeps(
   overrides: Partial<BootstrapDeps> = {},
 ): BootstrapDeps {
@@ -16,9 +37,7 @@ function createMockDeps(
     output: new PassThrough(),
     vaultPath: "/tmp/test-vault.json",
     existsSync: vi.fn().mockReturnValue(true),
-    readFileSync: vi
-      .fn()
-      .mockReturnValue("abcdef0123456789abcdef0123456789"),
+    readFileSync: vi.fn().mockImplementation(mockReadFile),
     keyringProvider: {
       retrieve: vi.fn().mockReturnValue(null),
       store: vi.fn(),
@@ -112,7 +131,10 @@ describe("bootstrapAgent", () => {
   it("reads salt file and prompts for passphrase", async () => {
     const saltHex = "aabbccdd11223344aabbccdd11223344";
     const deps = createMockDeps({
-      readFileSync: vi.fn().mockReturnValue(saltHex),
+      readFileSync: vi.fn().mockImplementation((p: string) => {
+        if (p.endsWith("manifest.json")) return FAKE_MANIFEST;
+        return saltHex;
+      }),
       readPassphrase: vi.fn().mockResolvedValue("testpass123"),
     });
 
@@ -152,6 +174,55 @@ describe("bootstrapAgent", () => {
     expect(result.capabilityRegistry).toBeInstanceOf(CapabilityRegistry);
     expect(result.auditLog).toBeInstanceOf(AuditLog);
     expect(result.sessionManager).toBeInstanceOf(SessionManager);
+  });
+
+  it("registers builtin skill manifest in capability registry", async () => {
+    const result = await bootstrapAgent(createMockDeps());
+    const skills = result.capabilityRegistry.listSkills();
+    expect(skills).toHaveLength(1);
+    expect(skills[0]!.id).toBe("builtin");
+
+    // Verify capabilities were actually granted
+    expect(result.capabilityRegistry.hasGrant("builtin", "fs:read")).toBe(true);
+    expect(result.capabilityRegistry.hasGrant("builtin", "fs:write")).toBe(true);
+    expect(result.capabilityRegistry.hasGrant("builtin", "process:spawn")).toBe(true);
+    expect(result.capabilityRegistry.hasGrant("builtin", "net:https")).toBe(true);
+  });
+
+  it("throws when builtin manifest fails to load", async () => {
+    const deps = createMockDeps({
+      keyringProvider: {
+        retrieve: vi.fn().mockReturnValue(Buffer.alloc(32)),
+        store: vi.fn(),
+      },
+      readFileSync: vi.fn().mockImplementation((p: string, _enc: BufferEncoding) => {
+        if (p.endsWith("manifest.json")) return "NOT VALID JSON{{{";
+        return "abcdef0123456789abcdef0123456789";
+      }),
+    });
+
+    await expect(bootstrapAgent(deps)).rejects.toThrow(
+      /Failed to load builtin manifest/i,
+    );
+  });
+
+  it("throws descriptive error when manifest file cannot be read", async () => {
+    const deps = createMockDeps({
+      keyringProvider: {
+        retrieve: vi.fn().mockReturnValue(Buffer.alloc(32)),
+        store: vi.fn(),
+      },
+      readFileSync: vi.fn().mockImplementation((p: string, _enc: BufferEncoding) => {
+        if (p.endsWith("manifest.json")) {
+          throw new Error("ENOENT: no such file or directory");
+        }
+        return "abcdef0123456789abcdef0123456789";
+      }),
+    });
+
+    await expect(bootstrapAgent(deps)).rejects.toThrow(
+      /Failed to load builtin skill manifest.*ENOENT/,
+    );
   });
 
   it("calls readPassphrase with correct prompt", async () => {

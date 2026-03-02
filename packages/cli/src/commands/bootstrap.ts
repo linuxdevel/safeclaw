@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
 import {
   existsSync as defaultExistsSync,
   readFileSync as defaultReadFileSync,
@@ -14,8 +16,9 @@ import {
   ToolOrchestrator,
   createBuiltinTools,
   AuditLog,
+  SkillLoader,
 } from "@safeclaw/core";
-import type { CopilotToken, CopilotModel, Capability } from "@safeclaw/core";
+import type { CopilotToken, CopilotModel } from "@safeclaw/core";
 import {
   Vault,
   KeyringProvider as DefaultKeyringProvider,
@@ -51,13 +54,11 @@ export interface BootstrapResult {
   auditLog: AuditLog;
 }
 
-const BUILTIN_CAPABILITIES: Capability[] = [
-  "fs:read",
-  "fs:write",
-  "process:spawn",
-  "net:https",
-  "env:read",
-];
+// Relative to compiled output: dist/commands/ -> ../../../../skills/builtin/
+const BUILTIN_MANIFEST_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../skills/builtin/manifest.json",
+);
 
 /**
  * Shared bootstrap for both `chat` and `serve` commands.
@@ -122,10 +123,29 @@ export async function bootstrapAgent(
   const client = new CopilotClient(copilotToken);
 
   const capabilityRegistry = new CapabilityRegistry();
-  for (const cap of BUILTIN_CAPABILITIES) {
+
+  // Load and register builtin skill manifest.
+  // The builtin manifest ships with the package, so signature verification
+  // is intentionally skipped — it is a trusted, first-party artifact.
+  let manifestJson: string;
+  try {
+    manifestJson = readFile(BUILTIN_MANIFEST_PATH, "utf8");
+  } catch (err) {
+    throw new Error(
+      `Failed to load builtin skill manifest: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const loader = new SkillLoader();
+  const loadResult = loader.loadFromString(manifestJson);
+  if (!loadResult.success || !loadResult.manifest) {
+    throw new Error(`Failed to load builtin manifest: ${loadResult.error}`);
+  }
+  const manifest = loadResult.manifest;
+  capabilityRegistry.registerSkill(manifest);
+  for (const req of manifest.requiredCapabilities) {
     capabilityRegistry.grantCapability({
-      skillId: "agent",
-      capability: cap,
+      skillId: manifest.id,
+      capability: req.capability,
       grantedAt: new Date(),
       grantedBy: "builtin",
     });
@@ -139,7 +159,7 @@ export async function bootstrapAgent(
 
   const orchestrator = new ToolOrchestrator(enforcer, toolRegistry);
   const agent = new Agent(
-    { ...DEFAULT_AGENT_CONFIG, model },
+    { ...DEFAULT_AGENT_CONFIG, model, skillId: manifest.id },
     client,
     orchestrator,
   );

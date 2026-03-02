@@ -123,4 +123,49 @@ describe("CapabilityEnforcer", () => {
       enforcer.checkAll("test-skill", ["fs:read", "net:http"]),
     ).toThrow(CapabilityDeniedError);
   });
+
+  it("rejects path traversal via ..", () => {
+    const registry = new CapabilityRegistry();
+    grant(registry, {
+      capability: "fs:read",
+      constraints: { paths: ["/tmp/"] },
+    });
+    const enforcer = new CapabilityEnforcer(registry);
+
+    // Direct traversal — should be denied
+    expect(() =>
+      enforcer.check("test-skill", "fs:read", { path: "/tmp/../etc/passwd" }),
+    ).toThrow(CapabilityDeniedError);
+  });
+
+  it("rejects path traversal via encoded sequences", () => {
+    const registry = new CapabilityRegistry();
+    grant(registry, {
+      capability: "fs:write",
+      constraints: { paths: ["/home/user/"] },
+    });
+    const enforcer = new CapabilityEnforcer(registry);
+
+    expect(() =>
+      enforcer.check("test-skill", "fs:write", {
+        path: "/home/user/../../etc/shadow",
+      }),
+    ).toThrow(CapabilityDeniedError);
+  });
+
+  it("allows legitimate paths after normalization", () => {
+    const registry = new CapabilityRegistry();
+    grant(registry, {
+      capability: "fs:read",
+      constraints: { paths: ["/tmp/"] },
+    });
+    const enforcer = new CapabilityEnforcer(registry);
+
+    // Redundant path segments that still resolve under /tmp/
+    expect(() =>
+      enforcer.check("test-skill", "fs:read", {
+        path: "/tmp/subdir/../other/file.txt",
+      }),
+    ).not.toThrow();
+  });
 });

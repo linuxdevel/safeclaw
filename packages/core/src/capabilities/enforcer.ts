@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { Capability } from "./types.js";
 import type { CapabilityRegistry } from "./registry.js";
 
@@ -51,8 +52,11 @@ export class CapabilityEnforcer {
     if (context.path) {
       const pathGrants = grants.filter((g) => g.constraints?.paths);
       if (pathGrants.length > 0) {
+        const normalizedPath = resolve(context.path);
         const allowed = pathGrants.some((g) =>
-          g.constraints!.paths!.some((p) => context.path!.startsWith(p)),
+          g.constraints!.paths!.some((p) =>
+            normalizedPath.startsWith(resolve(p)),
+          ),
         );
         if (!allowed) {
           throw new CapabilityDeniedError(
