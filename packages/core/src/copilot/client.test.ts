@@ -123,8 +123,11 @@ describe("CopilotClient", () => {
       expect(headers["Authorization"]).toBe(
         `Bearer ${token.token}`,
       );
-      expect(headers["Copilot-Integration-Id"]).toBe("safeclaw");
       expect(headers["Content-Type"]).toBe("application/json");
+      expect(headers["Copilot-Integration-Id"]).toBe("vscode-chat");
+      expect(headers["Editor-Version"]).toMatch(/^SafeClaw\//);
+      expect(headers["Editor-Plugin-Version"]).toMatch(/^SafeClaw\//);
+      expect(headers["User-Agent"]).toMatch(/^safeclaw\//);
     });
 
     it("throws on non-ok response with body", async () => {

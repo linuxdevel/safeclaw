@@ -112,6 +112,14 @@ class LineReader {
     });
   }
 
+  pause(): void {
+    this.rl.pause();
+  }
+
+  resume(): void {
+    this.rl.resume();
+  }
+
   close(): void {
     this.rl.close();
   }
@@ -228,13 +236,25 @@ async function createVaultStep(
     keySource: KeySource;
     saltPath?: string;
   }> => {
+    // Pause readline so it doesn't consume passphrase keystrokes
+    reader.pause();
     let passphrase: string;
-    for (;;) {
-      passphrase = await readPassphraseFn("Enter passphrase: ", input, output);
-      if (passphrase.length >= 8) break;
-      print(output, "  Passphrase must be at least 8 characters. Try again.");
+    try {
+      for (;;) {
+        passphrase = await readPassphraseFn("Enter passphrase: ", input, output);
+        if (passphrase.length >= 8) break;
+        print(output, "  Passphrase must be at least 8 characters. Try again.");
+      }
+    } finally {
+      reader.resume();
     }
-    const confirm = await readPassphraseFn("Confirm passphrase: ", input, output);
+    reader.pause();
+    let confirm: string;
+    try {
+      confirm = await readPassphraseFn("Confirm passphrase: ", input, output);
+    } finally {
+      reader.resume();
+    }
 
     if (passphrase !== confirm) {
       throw new Error("Passphrases do not match");

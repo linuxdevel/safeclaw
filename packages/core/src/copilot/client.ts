@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -5,6 +6,9 @@ import type {
   StreamChunk,
 } from "./types.js";
 import { COPILOT_API_BASE } from "./types.js";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../../package.json") as { version: string };
 
 export class CopilotClient {
   private readonly _token: CopilotToken;
@@ -95,8 +99,11 @@ export class CopilotClient {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this._token.token}`,
-        "Copilot-Integration-Id": "safeclaw",
         "Content-Type": "application/json",
+        "Copilot-Integration-Id": "vscode-chat",
+        "Editor-Version": `SafeClaw/${pkg.version}`,
+        "Editor-Plugin-Version": `SafeClaw/${pkg.version}`,
+        "User-Agent": `safeclaw/${pkg.version}`,
       },
       body: JSON.stringify(body),
     });

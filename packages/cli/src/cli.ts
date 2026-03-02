@@ -10,6 +10,7 @@ import { bootstrapAgent } from "./commands/bootstrap.js";
 import { setupChat } from "./commands/chat.js";
 import { Gateway, DEFAULT_GATEWAY_CONFIG } from "@safeclaw/gateway";
 import { WebChatAdapter } from "@safeclaw/webchat";
+import { listCopilotModels } from "@safeclaw/core";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -77,6 +78,7 @@ async function runOnboard(): Promise<void> {
     input: process.stdin,
     output: process.stdout,
     vaultPath: path.join(safeclawDir, "vault.json"),
+    listModels: listCopilotModels,
   });
 }
 
