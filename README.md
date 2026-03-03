@@ -56,6 +56,25 @@ After install, run `safeclaw onboard` for first-time setup.
 | Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
 | Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |
 
+## Roadmap
+
+Planned features with implementation plans (in priority order):
+
+| # | Feature | Plan | Priority | Status |
+|---|---------|------|----------|--------|
+| 1 | Tool parameter schemas | [plan](docs/plans/2026-03-03-tool-parameter-schemas.md) | High | Planned |
+| 2 | Streaming responses | [plan](docs/plans/2026-03-03-streaming-responses.md) | High | Planned |
+| 3 | Chat slash commands | [plan](docs/plans/2026-03-03-chat-commands.md) | High | Planned |
+| 4 | Configuration file | [plan](docs/plans/2026-03-03-configuration-file.md) | High | Planned |
+| 5 | Session persistence | [plan](docs/plans/2026-03-03-session-persistence.md) | Medium | Planned |
+| 6 | Context compaction | [plan](docs/plans/2026-03-03-context-compaction.md) | Medium | Planned |
+| 7 | WebSocket gateway | [plan](docs/plans/2026-03-03-websocket-gateway.md) | Medium | Planned |
+| 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Planned |
+| 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Planned |
+| 10 | Background process management | [plan](docs/plans/2026-03-03-background-process-management.md) | Low | Planned |
+| 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Planned |
+| 12 | Multi-file patch tool | [plan](docs/plans/2026-03-03-multi-file-patch-tool.md) | Low | Planned |
+
 ## CLI Commands
 
 | Command | Description |
