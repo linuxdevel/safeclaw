@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { homedir } from "node:os";
 import { PolicyBuilder } from "./policy-builder.js";
 import type { SandboxPolicy, PathRule } from "./types.js";
 
@@ -75,12 +76,12 @@ describe("PolicyBuilder", () => {
       policy = PolicyBuilder.forDevelopment("/home/dev/project");
     });
 
-    it("includes CWD as readwrite", () => {
+    it("includes CWD as readwriteexecute", () => {
       const cwd = policy.filesystem.allow.find(
         (r: PathRule) => r.path === "/home/dev/project",
       );
       expect(cwd).toBeDefined();
-      expect(cwd!.access).toBe("readwrite");
+      expect(cwd!.access).toBe("readwriteexecute");
     });
 
     it("includes /tmp as readwrite", () => {
@@ -142,9 +143,17 @@ describe("PolicyBuilder", () => {
       expect(proc!.access).toBe("read");
     });
 
-    it("includes device nodes as read-only", () => {
-      const devices = ["/dev/null", "/dev/urandom", "/dev/zero"];
-      for (const d of devices) {
+    it("includes device nodes with appropriate access", () => {
+      // /dev/null needs readwrite (git and many tools write to it)
+      const devNull = policy.filesystem.allow.find(
+        (r: PathRule) => r.path === "/dev/null",
+      );
+      expect(devNull, "expected /dev/null to be in allow list").toBeDefined();
+      expect(devNull!.access).toBe("readwrite");
+
+      // /dev/urandom and /dev/zero only need read access
+      const readOnlyDevices = ["/dev/urandom", "/dev/zero"];
+      for (const d of readOnlyDevices) {
         const rule = policy.filesystem.allow.find(
           (r: PathRule) => r.path === d,
         );
@@ -183,12 +192,19 @@ describe("PolicyBuilder", () => {
       ).toBe(true);
     });
 
-    it("includes ~/.safeclaw as readwrite", () => {
+    it("includes home directory as read-only", () => {
+      const homeRule = policy.filesystem.allow.find((r: PathRule) =>
+        r.path === homedir(),
+      );
+      expect(homeRule).toBeDefined();
+      expect(homeRule!.access).toBe("read");
+    });
+
+    it("does not include ~/.safeclaw as readwrite", () => {
       const safeclaw = policy.filesystem.allow.find((r: PathRule) =>
         r.path.endsWith("/.safeclaw"),
       );
-      expect(safeclaw).toBeDefined();
-      expect(safeclaw!.access).toBe("readwrite");
+      expect(safeclaw).toBeUndefined();
     });
 
     it("has network set to none", () => {

@@ -1,7 +1,7 @@
 /** Filesystem access rule for Landlock */
 export interface PathRule {
   path: string;
-  access: "read" | "write" | "readwrite" | "execute";
+  access: "read" | "write" | "readwrite" | "execute" | "readwriteexecute";
 }
 
 /** Sandbox policy — defines isolation constraints for a single execution */

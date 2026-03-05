@@ -179,7 +179,38 @@ static int skip_value(Parser *p)
     case '{': return skip_object(p);
     case '[': return skip_array(p);
     case 't': case 'f': { int dummy; return parse_bool(p, &dummy); }
+    case 'n': /* null */
+        if (p->pos + 4 <= p->end && memcmp(p->pos, "null", 4) == 0) {
+            p->pos += 4; return 0;
+        }
+        set_error(p, "unexpected token");
+        return -1;
     default:
+        /* JSON numbers: optional minus, digits, optional fraction/exponent */
+        if (*p->pos == '-' || (*p->pos >= '0' && *p->pos <= '9')) {
+            if (*p->pos == '-') p->pos++;
+            if (p->pos >= p->end || *p->pos < '0' || *p->pos > '9') {
+                set_error(p, "invalid number");
+                return -1;
+            }
+            while (p->pos < p->end && *p->pos >= '0' && *p->pos <= '9')
+                p->pos++;
+            /* optional fraction */
+            if (p->pos < p->end && *p->pos == '.') {
+                p->pos++;
+                while (p->pos < p->end && *p->pos >= '0' && *p->pos <= '9')
+                    p->pos++;
+            }
+            /* optional exponent */
+            if (p->pos < p->end && (*p->pos == 'e' || *p->pos == 'E')) {
+                p->pos++;
+                if (p->pos < p->end && (*p->pos == '+' || *p->pos == '-'))
+                    p->pos++;
+                while (p->pos < p->end && *p->pos >= '0' && *p->pos <= '9')
+                    p->pos++;
+            }
+            return 0;
+        }
         set_error(p, "unexpected token");
         return -1;
     }
@@ -193,6 +224,7 @@ static int map_access(const char *s)
     if (strcmp(s, "write") == 0)     return ACCESS_WRITE;
     if (strcmp(s, "readwrite") == 0) return ACCESS_READWRITE;
     if (strcmp(s, "execute") == 0)   return ACCESS_EXECUTE;
+    if (strcmp(s, "readwriteexecute") == 0) return ACCESS_READWRITEEXECUTE;
     return -1;
 }
 

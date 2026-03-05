@@ -134,6 +134,22 @@ static uint64_t policy_access_to_landlock(int access_level, int abi)
                    LANDLOCK_ACCESS_FS_READ_DIR;
     }
 
+    if (access_level == ACCESS_READWRITEEXECUTE) {
+        rights |= LANDLOCK_ACCESS_FS_EXECUTE    |
+                   LANDLOCK_ACCESS_FS_WRITE_FILE |
+                   LANDLOCK_ACCESS_FS_READ_FILE  |
+                   LANDLOCK_ACCESS_FS_READ_DIR   |
+                   LANDLOCK_ACCESS_FS_REMOVE_FILE |
+                   LANDLOCK_ACCESS_FS_REMOVE_DIR |
+                   LANDLOCK_ACCESS_FS_MAKE_REG   |
+                   LANDLOCK_ACCESS_FS_MAKE_DIR   |
+                   LANDLOCK_ACCESS_FS_MAKE_SYM;
+        if (abi >= 2)
+            rights |= LANDLOCK_ACCESS_FS_REFER;
+        if (abi >= 3)
+            rights |= LANDLOCK_ACCESS_FS_TRUNCATE;
+    }
+
     return rights;
 }
 

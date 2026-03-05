@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import type { SandboxPolicy, PathRule } from "./types.js";
 
 /** Options for customizing the development policy */
@@ -29,6 +29,11 @@ export class PolicyBuilder {
 
   addReadWrite(path: string): this {
     this.addRule(path, "readwrite");
+    return this;
+  }
+
+  addReadWriteExecute(path: string): this {
+    this.addRule(path, "readwriteexecute");
     return this;
   }
 
@@ -63,8 +68,10 @@ export class PolicyBuilder {
    * Creates a policy suitable for software development.
    *
    * Grants:
-   * - Readwrite access to CWD, /tmp, and ~/.safeclaw
+   * - Read/write/execute access to CWD (compile + run binaries)
+   * - Readwrite access to /tmp
    * - Execute access to standard command/library paths, compiler toolchains
+   * - Read access to home directory (excluding sensitive dirs like ~/.ssh by omission)
    * - Read access to /etc, /proc/self, device nodes, headers, and support files
    * - Expanded syscall allowlist for common dev tools
    * - No network access (tools needing network run unsandboxed)
@@ -76,9 +83,9 @@ export class PolicyBuilder {
     const builder = new PolicyBuilder();
 
     // ── Readwrite paths ──────────────────────────────────────────────
-    builder.addReadWrite(cwd);
+    // CWD gets readwriteexecute so compiled binaries can be run (./app)
+    builder.addReadWriteExecute(cwd);
     builder.addReadWrite("/tmp");
-    builder.addReadWrite(join(homedir(), ".safeclaw"));
 
     // ── Standard command locations (execute) ─────────────────────────
     builder.addReadExecute("/bin");
@@ -111,6 +118,10 @@ export class PolicyBuilder {
     builder.addReadExecute(nodeInstallDir);
 
     // ── Read-only paths ──────────────────────────────────────────────
+    // Home directory: read-only for dotfiles, configs, etc.
+    // Sensitive dirs like ~/.ssh are NOT added — Landlock denies by default.
+    builder.addReadOnly(homedir());
+
     builder.addReadOnly("/etc");
     builder.addReadOnly("/proc/self");
 
@@ -123,7 +134,7 @@ export class PolicyBuilder {
     builder.addReadOnly("/usr/local/share");
 
     // Device nodes
-    builder.addReadOnly("/dev/null");
+    builder.addReadWrite("/dev/null");
     builder.addReadOnly("/dev/urandom");
     builder.addReadOnly("/dev/zero");
 
@@ -164,19 +175,25 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "execveat",
   "wait4",
   "waitid",
+  "vfork",
   "kill",
   "tgkill",
   "getpid",
   "getppid",
+  "gettid",
   "getuid",
   "getgid",
   "geteuid",
   "getegid",
   "getgroups",
+  "getpgrp",
   "prctl",
   "arch_prctl",
   "set_tid_address",
   "set_robust_list",
+  "capget",
+  "setresuid",
+  "setresgid",
 
   // ── Memory management ──────────────────────────────────────────────
   "brk",
@@ -190,6 +207,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   // ── File operations ────────────────────────────────────────────────
   "read",
   "write",
+  "open",
   "openat",
   "close",
   "fstat",
@@ -198,6 +216,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "newfstatat",
   "statx",
   "access",
+  "faccessat2",
   "readlink",
   "readlinkat",
   "getdents64",
@@ -231,6 +250,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "umask",
   "utimensat",
   "fallocate",
+  "flock",
 
   // ── Directory navigation ───────────────────────────────────────────
   "getcwd",
@@ -242,6 +262,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "pipe2",
   "dup",
   "dup2",
+  "dup3",
   "close_range",
   "copy_file_range",
   "sendfile",
@@ -281,6 +302,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "epoll_create1",
   "epoll_ctl",
   "epoll_wait",
+  "epoll_pwait",
   "eventfd2",
   "inotify_init1",
   "inotify_add_watch",
@@ -292,6 +314,8 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
 
   // ── Time ───────────────────────────────────────────────────────────
   "clock_gettime",
+  "clock_getres",
+  "clock_nanosleep",
   "gettimeofday",
   "nanosleep",
   "alarm",
@@ -307,6 +331,7 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   "getrlimit",
   "setrlimit",
   "prlimit64",
+  "getrusage",
   "sched_getaffinity",
   "sched_yield",
   "getrandom",
@@ -323,4 +348,5 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   // ── Misc (needed by Node.js, compilers, linkers) ───────────────────
   "openat2",
   "mknod",
+  "restart_syscall",
 ];

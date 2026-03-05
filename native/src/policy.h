@@ -14,6 +14,7 @@
 #define ACCESS_WRITE      2
 #define ACCESS_READWRITE  3
 #define ACCESS_EXECUTE    4
+#define ACCESS_READWRITEEXECUTE 5
 
 /* Exit codes */
 #define EXIT_POLICY_ERROR    70
