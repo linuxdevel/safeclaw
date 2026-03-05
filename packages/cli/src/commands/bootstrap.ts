@@ -17,6 +17,7 @@ import {
   createBuiltinTools,
   AuditLog,
   SkillLoader,
+  loadConfig as defaultLoadConfig,
 } from "@safeclaw/core";
 import type { CopilotToken, CopilotModel } from "@safeclaw/core";
 import {
@@ -31,6 +32,8 @@ export interface BootstrapDeps {
   input: NodeJS.ReadableStream;
   output: NodeJS.WritableStream;
   vaultPath: string;
+  /** Path to safeclaw.json config file (default: derived from vaultPath) */
+  configPath?: string;
   // Injectable for testing
   existsSync?: (path: string) => boolean;
   readFileSync?: (path: string, encoding: BufferEncoding) => string;
@@ -46,6 +49,8 @@ export interface BootstrapDeps {
     input: NodeJS.ReadableStream,
     output: NodeJS.WritableStream,
   ) => Promise<string>;
+  /** Injectable config loader for testing */
+  loadConfig?: (configPath: string) => ReturnType<typeof defaultLoadConfig>;
 }
 
 export interface BootstrapResult {
@@ -106,6 +111,11 @@ export async function bootstrapAgent(
   // 3. Open vault
   const vault = openVault(vaultPath, key);
 
+  // 3.5 Load config file
+  const configPath = deps.configPath ?? vaultPath.replace(/vault\.json$/, "safeclaw.json");
+  const loadConfigFn = deps.loadConfig ?? defaultLoadConfig;
+  const config = loadConfigFn(configPath);
+
   // 4. Get GitHub token
   const githubToken = vault.get("github_token");
   if (!githubToken) {
@@ -118,9 +128,9 @@ export async function bootstrapAgent(
   const copilotToken = await exchangeToken(githubToken);
 
   // 6. Build Agent stack
-  const model =
-    (vault.get("default_model") as CopilotModel | undefined) ??
-    DEFAULT_AGENT_CONFIG.model;
+  // Precedence: vault > config file > defaults
+  const vaultModel = vault.get("default_model") as CopilotModel | undefined;
+  const model = vaultModel ?? config.model ?? DEFAULT_AGENT_CONFIG.model;
   const client = new CopilotClient(copilotToken);
 
   const capabilityRegistry = new CapabilityRegistry();
@@ -177,7 +187,15 @@ export async function bootstrapAgent(
       : undefined,
   );
   const agent = new Agent(
-    { ...DEFAULT_AGENT_CONFIG, model, skillId: manifest.id },
+    {
+      ...DEFAULT_AGENT_CONFIG,
+      model,
+      systemPrompt: config.systemPrompt ?? DEFAULT_AGENT_CONFIG.systemPrompt,
+      maxToolRounds: config.maxToolRounds ?? DEFAULT_AGENT_CONFIG.maxToolRounds,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      skillId: manifest.id,
+    },
     client,
     orchestrator,
   );

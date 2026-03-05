@@ -6,3 +6,4 @@ export * from "./copilot/index.js";
 export * from "./sessions/index.js";
 export * from "./skills/index.js";
 export * from "./tools/index.js";
+export * from "./config/index.js";
