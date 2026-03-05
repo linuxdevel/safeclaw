@@ -92,7 +92,13 @@ describe("PolicyBuilder", () => {
     });
 
     it("includes standard command paths as execute", () => {
-      const expectedPaths = ["/bin", "/usr/bin", "/usr/local/bin"];
+      const expectedPaths = [
+        "/bin",
+        "/usr/bin",
+        "/usr/local/bin",
+        "/sbin",
+        "/usr/sbin",
+      ];
       for (const p of expectedPaths) {
         const rule = policy.filesystem.allow.find(
           (r: PathRule) => r.path === p,
@@ -103,7 +109,7 @@ describe("PolicyBuilder", () => {
     });
 
     it("includes shared library paths as execute", () => {
-      const expectedPaths = ["/usr/lib", "/lib", "/lib64"];
+      const expectedPaths = ["/usr/lib", "/lib", "/lib64", "/usr/lib64"];
       for (const p of expectedPaths) {
         const rule = policy.filesystem.allow.find(
           (r: PathRule) => r.path === p,

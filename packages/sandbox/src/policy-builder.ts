@@ -84,11 +84,14 @@ export class PolicyBuilder {
     builder.addReadExecute("/bin");
     builder.addReadExecute("/usr/bin");
     builder.addReadExecute("/usr/local/bin");
+    builder.addReadExecute("/sbin");
+    builder.addReadExecute("/usr/sbin");
 
     // ── Shared libraries (execute) ───────────────────────────────────
     builder.addReadExecute("/usr/lib");
     builder.addReadExecute("/lib");
     builder.addReadExecute("/lib64");
+    builder.addReadExecute("/usr/lib64");
 
     // ── Compiler and toolchain paths (execute) ───────────────────────
     // JDK installations (javac, java, jar, etc.)
