@@ -1,13 +1,10 @@
 # SafeClaw
 
-A security-first personal AI assistant with zero-trust architecture.
-
-> **Work in Progress** — SafeClaw is under active development. See the
-> [Feature Status](#feature-status) table below for current implementation state.
+A security-first personal AI coding assistant with zero-trust architecture.
 
 ## Overview
 
-SafeClaw is a secure alternative to open-source AI assistants. Built with mandatory sandboxing, signed skills, encrypted secrets, and capability-based access control. Security is structural, not opt-in — every tool execution is sandboxed, every skill is signed, every secret is encrypted at rest.
+SafeClaw is a secure AI coding assistant with mandatory OS-level sandboxing, signed skills, encrypted secrets, and capability-based access control. Security is structural, not opt-in — every tool execution is sandboxed, every skill is signed, every secret is encrypted at rest.
 
 ## Quick Install
 
@@ -21,72 +18,58 @@ After install, run `safeclaw onboard` for first-time setup.
 
 ## Features
 
+### Security
+
 - Zero-trust security model with mandatory OS-level sandboxing (Landlock + seccomp-BPF + Linux namespaces)
 - AES-256-GCM encrypted secrets vault with OS keyring or passphrase-derived keys
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
-- Multi-provider LLM support: GitHub Copilot, OpenAI, and Anthropic (Claude Sonnet 4 default)
-- Interactive CLI and browser-based WebChat channels
+- Capability-based access control with path/host/executable constraints
+- Native C helper binary for sandbox enforcement (musl-gcc, statically linked)
+
+### AI & Models
+
+- Multi-provider LLM support: GitHub Copilot, OpenAI, and Anthropic
+- Streaming responses with SSE-based token delivery
+- Context compaction via LLM-powered conversation summarization
+- Configurable default model with dynamic model discovery during onboarding
+
+### Tools
+
 - Built-in tools: file read/write/edit, bash execution, web fetch, web search, background process management, multi-file patch application — all capability-gated
-- 5-step onboarding wizard with kernel capability detection
-- `safeclaw doctor` diagnostic command with 12 checks across system, security, config, and connectivity
-- Security audit CLI for inspecting skills, sessions, and tool executions
+- Web search via Brave Search API (conditionally included when API key is in vault)
+- Background process management with ring buffer output capture (1MB max, 8 concurrent, 1h auto-cleanup)
+- Multi-file patch tool with unified diff parsing, fuzzy hunk matching, and atomic writes
+
+### Interface
+
+- Interactive CLI with chat slash commands (/help, /model, /clear, /compact, /session, /sessions, /export, /doctor)
+- Browser-based WebChat SPA with dark theme
 - HTTP gateway with token auth and rate limiting
+- WebSocket gateway for real-time bidirectional communication
+- `safeclaw doctor` diagnostic command with 12 checks across system, security, config, and connectivity
 
-## Feature Status
+### Infrastructure
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Encrypted vault (AES-256-GCM + scrypt) | Done | OS keyring and passphrase-derived keys |
-| Ed25519 skill signing and verification | Done | Sign, verify, reject unsigned |
-| Capability declarations and enforcement | Done | Path/host/executable constraints |
-| GitHub Copilot API client | Done | Streaming and non-streaming, device flow auth |
-| Dynamic model discovery | Done | Fetches available models during onboarding |
-| Agent loop with tool calling | Done | Multi-round tool execution |
-| Built-in tools (read, write, edit, bash, web\_fetch) | Done | All declare required capabilities |
-| Web search tool (web\_search) | Done | Brave Search API; conditionally included when `brave_api_key` is in vault |
-| Background process management (`process`) | Done | Start/status/log/kill/list subcommands; max 8 concurrent, 1MB ring buffer, 1h auto-cleanup |
-| Multi-file patch tool (`apply_patch`) | Done | Unified diff parsing, fuzzy hunk matching, atomic multi-file writes |
-| Doctor command (`safeclaw doctor`) | Done | 12 diagnostic checks across 4 categories; also available as `/doctor` chat command |
-| CLI channel (interactive chat) | Done | readline-based with passphrase masking |
-| WebChat SPA | Done | Dark theme, localStorage auth config |
-| HTTP gateway with auth and rate limiting | Done | Token-based, timing-safe comparison |
-| Onboarding wizard | Done | 5-step: kernel check, auth, vault, keys, model |
-| Session management | Done | Create, peer indexing, isolation |
-| Audit logging (in-memory) | Done | Per-execution recording with rotation |
-| CI/CD (GitHub Actions) | Done | Lint, build, typecheck, test, release |
-| Install script with vault preservation | Done | Upgrade-safe, preserves vault files |
-| OS-level sandboxing (Landlock + seccomp + namespaces) | Done | Namespace + Landlock + seccomp + capability drop via native helper |
-| Sandbox-enforced tool execution | Done | Bash tool routed through sandbox; audit log records sandboxed status |
-| `safeclaw audit` CLI command | Done | Wired into CLI; calls bootstrapAgent and runAudit |
-| Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
-| Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |
-| Tool parameter schemas (JSON Schema) | Done | All builtin tools declare parameter schemas |
-| Streaming responses | Done | SSE-based streaming in agent loop and channels |
-| Chat slash commands | Done | /help, /model, /clear, /compact, /session, /sessions, /export, /doctor |
-| Configuration file (safeclaw.json) | Done | Model, prompt, tool rounds, gateway, sandbox settings |
-| Session persistence (FileSessionStore) | Done | Sessions survive restarts; file-backed store |
-| Context compaction | Done | LLM-powered conversation summarization at 80% context threshold |
-| WebSocket gateway | Done | Real-time bidirectional communication |
-| Multi-model provider support | Done | ModelProvider interface; Copilot, OpenAI, Anthropic providers |
+- 5-step onboarding wizard with kernel capability detection
+- Session persistence via file-backed store
+- Configuration file (safeclaw.json) for model, prompt, tool rounds, gateway, sandbox settings
+- Security audit CLI for inspecting skills, sessions, and tool executions
+- CI/CD via GitHub Actions (lint, build, typecheck, test, release)
+- Install script with vault preservation for upgrades
 
-## Roadmap
+## Roadmap (v2)
 
-Planned features with implementation plans (in priority order):
+Planned features in implementation order:
 
-| # | Feature | Plan | Priority | Status |
-|---|---------|------|----------|--------|
-| 1 | Tool parameter schemas | [plan](docs/plans/2026-03-03-tool-parameter-schemas.md) | High | Done |
-| 2 | Streaming responses | [plan](docs/plans/2026-03-03-streaming-responses.md) | High | Done |
-| 3 | Chat slash commands | [plan](docs/plans/2026-03-03-chat-commands.md) | High | Done |
-| 4 | Configuration file | [plan](docs/plans/2026-03-03-configuration-file.md) | High | Done |
-| 5 | Session persistence | [plan](docs/plans/2026-03-03-session-persistence.md) | Medium | Done |
-| 6 | Context compaction | [plan](docs/plans/2026-03-03-context-compaction.md) | Medium | Done |
-| 7 | WebSocket gateway | [plan](docs/plans/2026-03-03-websocket-gateway.md) | Medium | Done |
-| 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Done |
-| 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Done |
-| 10 | Background process management | [plan](docs/plans/2026-03-03-background-process-management.md) | Low | Done |
-| 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Done |
-| 12 | Multi-file patch tool | [plan](docs/plans/2026-03-03-multi-file-patch-tool.md) | Low | Done |
+| # | Feature | Plan | Priority |
+|---|---------|------|----------|
+| 1 | Sandbox command execution & CWD permissions | [plan](docs/plans/2026-03-05-sandbox-permissions.md) | High |
+| 2 | Automatic context compaction | [plan](docs/plans/2026-03-05-context-compaction.md) | High |
+| 3 | Streaming UX (Phase 1 — readline) | [plan](docs/plans/2026-03-05-streaming-ux.md) | High |
+| 4 | Better CLI/TUI (Ink-based) | [plan](docs/plans/2026-03-05-tui.md) | High |
+| 5 | Parallel agents | [plan](docs/plans/2026-03-05-parallel-agents.md) | Medium |
+| 6 | Long-running background agents | [plan](docs/plans/2026-03-05-background-agents.md) | Medium |
+| 7 | Superpowers skill integration | [plan](docs/plans/2026-03-05-superpowers-integration.md) | Medium |
 
 ## CLI Commands
 
