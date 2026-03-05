@@ -66,6 +66,7 @@ describe("ChatCommandHandler", () => {
       expect(result).toContain("/status");
       expect(result).toContain("/compact");
       expect(result).toContain("/model");
+      expect(result).toContain("/doctor");
       expect(result).toContain("/help");
     });
   });
@@ -141,6 +142,16 @@ describe("ChatCommandHandler", () => {
       await handler.execute("/model gpt-4o");
       const status = await handler.execute("/status");
       expect(status).toContain("gpt-4o");
+    });
+  });
+
+  describe("/doctor", () => {
+    it("returns diagnostic output", async () => {
+      const deps = makeDeps();
+      const handler = new ChatCommandHandler(deps);
+      const result = await handler.execute("/doctor");
+      expect(result).toContain("SafeClaw Doctor");
+      expect(result).toContain("Summary:");
     });
   });
 

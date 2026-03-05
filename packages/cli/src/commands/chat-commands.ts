@@ -1,4 +1,6 @@
 import type { Agent, Session, SessionManager } from "@safeclaw/core";
+import { PassThrough } from "node:stream";
+import { runDoctor } from "./doctor.js";
 
 export interface ChatCommandDeps {
   session: Session;
@@ -36,6 +38,8 @@ export class ChatCommandHandler {
         return this.compactCommand();
       case "model":
         return this.modelCommand(args);
+      case "doctor":
+        return this.doctorCommand();
       default:
         return `Unknown command: /${command}. Type /help for available commands.`;
     }
@@ -52,6 +56,7 @@ export class ChatCommandHandler {
       "  /status   Show session metadata and current model",
       "  /compact  Compact conversation context (placeholder)",
       "  /model    Show or change the current model",
+      "  /doctor   Run system diagnostics and health checks",
       "  /help     Show this help message",
     ];
     return lines.join("\n");
@@ -87,5 +92,16 @@ export class ChatCommandHandler {
     const oldModel = this.model;
     this.model = newModel;
     return `Model changed: ${oldModel} → ${newModel}`;
+  }
+
+  private async doctorCommand(): Promise<string> {
+    const output = new PassThrough();
+    await runDoctor({ output });
+    const chunks: Buffer[] = [];
+    let chunk: Buffer | null;
+    while ((chunk = output.read() as Buffer | null) !== null) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString().trimEnd();
   }
 }
