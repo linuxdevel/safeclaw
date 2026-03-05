@@ -71,3 +71,83 @@ describe("setupChat", () => {
     await adapter.disconnect();
   });
 });
+
+// --- Streaming chat tests ---
+
+import { setupStreamingChat } from "./chat.js";
+import type { AgentStreamEvent } from "@safeclaw/core";
+
+async function* fakeStream(
+  events: AgentStreamEvent[],
+): AsyncGenerator<AgentStreamEvent> {
+  for (const event of events) {
+    yield event;
+  }
+}
+
+function createStreamChatMocks() {
+  const adapter = {
+    onMessage: vi.fn(),
+    onStreamMessage: vi.fn(),
+    peer: { channelId: "cli", peerId: "local" },
+  } as unknown as CliAdapter;
+
+  const agent = {
+    processMessageStream: vi.fn(),
+  } as unknown as Agent;
+
+  const session = {} as Session;
+
+  return { adapter, agent, session };
+}
+
+describe("setupStreamingChat", () => {
+  it("registers a stream handler on the adapter", () => {
+    const { adapter, agent, session } = createStreamChatMocks();
+    setupStreamingChat(adapter, agent, session);
+    expect(adapter.onStreamMessage).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it("handler calls processMessageStream and yields text deltas", async () => {
+    const { adapter, agent, session } = createStreamChatMocks();
+
+    const events: AgentStreamEvent[] = [
+      { type: "text_delta", content: "Hello" },
+      { type: "text_delta", content: " world" },
+      {
+        type: "done",
+        response: {
+          message: "Hello world",
+          toolCallsMade: 0,
+          model: "claude-sonnet-4",
+        },
+      },
+    ];
+
+    vi.mocked(agent.processMessageStream).mockReturnValue(
+      fakeStream(events),
+    );
+
+    setupStreamingChat(adapter, agent, session);
+
+    // Get the handler that was registered
+    const handler = vi.mocked(adapter.onStreamMessage).mock.calls[0]![0] as (
+      msg: { peer: { channelId: string; peerId: string }; content: string; timestamp: Date },
+    ) => AsyncIterable<{ content: string; stream?: boolean }>;
+
+    const outbound: Array<{ content: string; stream?: boolean }> = [];
+    for await (const msg of handler({
+      peer: { channelId: "cli", peerId: "local" },
+      content: "Hi",
+      timestamp: new Date(),
+    })) {
+      outbound.push(msg);
+    }
+
+    expect(outbound).toEqual([
+      { content: "Hello", stream: true },
+      { content: " world", stream: true },
+      { content: "", stream: false },
+    ]);
+  });
+});

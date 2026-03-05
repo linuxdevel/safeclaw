@@ -11,6 +11,7 @@ export interface InboundMessage {
 export interface OutboundMessage {
   content: string;
   metadata?: Record<string, unknown> | undefined;
+  stream?: boolean | undefined;
 }
 
 /**

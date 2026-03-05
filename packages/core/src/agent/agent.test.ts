@@ -5,6 +5,7 @@ import type { CopilotClient } from "../copilot/client.js";
 import type {
   ChatCompletionResponse,
   ChatMessage,
+  StreamChunk,
 } from "../copilot/types.js";
 import type { Session } from "../sessions/session.js";
 import type { ToolOrchestrator } from "../tools/orchestrator.js";
@@ -76,6 +77,7 @@ function createMocks() {
 
   const client = {
     chat: vi.fn(),
+    chatStream: vi.fn(),
   } as unknown as CopilotClient;
 
   const toolRegistry = {
@@ -93,6 +95,127 @@ function createMocks() {
     toolRegistry;
 
   return { session, client, orchestrator, toolRegistry, history };
+}
+
+function makeStreamChunks(
+  textContent: string,
+  finishReason: string | null = "stop",
+): StreamChunk[] {
+  const chunks: StreamChunk[] = [];
+  for (const char of textContent) {
+    chunks.push({
+      id: "stream-1",
+      model: "claude-sonnet-4",
+      choices: [
+        {
+          index: 0,
+          delta: { content: char },
+          finish_reason: null,
+        },
+      ],
+    });
+  }
+  // Final chunk with finish_reason
+  chunks.push({
+    id: "stream-1",
+    model: "claude-sonnet-4",
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: finishReason ?? "stop",
+      },
+    ],
+  });
+  return chunks;
+}
+
+function makeToolCallStreamChunks(
+  toolCalls: Array<{
+    id: string;
+    name: string;
+    arguments: string;
+  }>,
+): StreamChunk[] {
+  const chunks: StreamChunk[] = [];
+
+  // Send each tool call's name and id in one chunk, arguments character-by-character
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i]!;
+    // First chunk: id, type, and function name
+    chunks.push({
+      id: "stream-1",
+      model: "claude-sonnet-4",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: i,
+                id: tc.id,
+                type: "function",
+                function: { name: tc.name, arguments: "" },
+              },
+            ],
+          },
+          finish_reason: null,
+        },
+      ],
+    });
+
+    // Argument chunks
+    for (const char of tc.arguments) {
+      chunks.push({
+        id: "stream-1",
+        model: "claude-sonnet-4",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: i,
+                  function: { arguments: char },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      });
+    }
+  }
+
+  // Final chunk
+  chunks.push({
+    id: "stream-1",
+    model: "claude-sonnet-4",
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: "tool_calls",
+      },
+    ],
+  });
+  return chunks;
+}
+
+async function* asyncIterableFrom<T>(items: T[]): AsyncIterable<T> {
+  for (const item of items) {
+    yield item;
+  }
+}
+
+async function collectEvents(
+  stream: AsyncIterable<import("./types.js").AgentStreamEvent>,
+): Promise<import("./types.js").AgentStreamEvent[]> {
+  const events: import("./types.js").AgentStreamEvent[] = [];
+  for await (const event of stream) {
+    events.push(event);
+  }
+  return events;
 }
 
 // --- tests ---
@@ -422,6 +545,214 @@ describe("Agent", () => {
       const chatCall = vi.mocked(client.chat).mock.calls[0]![0];
       expect(chatCall.temperature).toBe(0.5);
       expect(chatCall.max_tokens).toBe(1000);
+    });
+  });
+
+  describe("processMessageStream", () => {
+    it("yields text_delta events for each content chunk", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      const chunks = makeStreamChunks("Hi!");
+      vi.mocked(client.chatStream).mockReturnValue(
+        asyncIterableFrom(chunks),
+      );
+
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Hello"),
+      );
+
+      const textDeltas = events.filter((e) => e.type === "text_delta");
+      expect(textDeltas).toHaveLength(3); // "H", "i", "!"
+      expect(textDeltas.map((e) => (e as { content: string }).content).join("")).toBe("Hi!");
+    });
+
+    it("emits done event with complete AgentResponse", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      const chunks = makeStreamChunks("Done.");
+      vi.mocked(client.chatStream).mockReturnValue(
+        asyncIterableFrom(chunks),
+      );
+
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Finish"),
+      );
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
+      expect(doneEvents[0]).toEqual({
+        type: "done",
+        response: {
+          message: "Done.",
+          toolCallsMade: 0,
+          model: "claude-sonnet-4",
+        },
+      });
+    });
+
+    it("accumulates tool calls from stream and executes them", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
+
+      // First stream: tool call
+      const toolChunks = makeToolCallStreamChunks([
+        {
+          id: "call_s1",
+          name: "read_file",
+          arguments: JSON.stringify({ path: "/etc/hosts" }),
+        },
+      ]);
+
+      // Second stream: final text
+      const textChunks = makeStreamChunks("File contents here.");
+
+      vi.mocked(client.chatStream)
+        .mockReturnValueOnce(asyncIterableFrom(toolChunks))
+        .mockReturnValueOnce(asyncIterableFrom(textChunks));
+
+      vi.mocked(orchestrator.execute).mockResolvedValue({
+        success: true,
+        output: "127.0.0.1 localhost",
+        durationMs: 5,
+        sandboxed: false,
+      });
+
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Read hosts"),
+      );
+
+      // Should see tool_start, tool_result, text_deltas, done
+      const toolStarts = events.filter((e) => e.type === "tool_start");
+      const toolResults = events.filter((e) => e.type === "tool_result");
+      expect(toolStarts).toHaveLength(1);
+      expect(toolStarts[0]).toEqual({
+        type: "tool_start",
+        toolName: "read_file",
+        toolCallId: "call_s1",
+      });
+      expect(toolResults).toHaveLength(1);
+      expect(toolResults[0]).toEqual({
+        type: "tool_result",
+        toolCallId: "call_s1",
+        result: "127.0.0.1 localhost",
+        success: true,
+      });
+
+      expect(orchestrator.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: "read_file",
+          args: { path: "/etc/hosts" },
+        }),
+      );
+    });
+
+    it("enforces maxToolRounds and emits done", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
+
+      const toolChunks = makeToolCallStreamChunks([
+        {
+          id: "call_loop",
+          name: "read_file",
+          arguments: JSON.stringify({ path: "/" }),
+        },
+      ]);
+
+      // Always return tool calls
+      vi.mocked(client.chatStream).mockReturnValue(
+        asyncIterableFrom(toolChunks),
+      );
+
+      vi.mocked(orchestrator.execute).mockResolvedValue({
+        success: true,
+        output: "ok",
+        durationMs: 1,
+        sandboxed: false,
+      });
+
+      const config = makeConfig({ maxToolRounds: 1 });
+      const agent = new Agent(config, client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Loop"),
+      );
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
+      const done = doneEvents[0] as { type: "done"; response: { message: string; toolCallsMade: number } };
+      expect(done.response.message).toContain("tool");
+      expect(client.chatStream).toHaveBeenCalledTimes(1);
+    });
+
+    it("emits error event on stream failure", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      // eslint-disable-next-line require-yield
+      async function* failingStream(): AsyncIterable<StreamChunk> {
+        throw new Error("Network error");
+      }
+
+      vi.mocked(client.chatStream).mockReturnValue(failingStream());
+
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Fail"),
+      );
+
+      const errorEvents = events.filter((e) => e.type === "error");
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0]).toEqual({
+        type: "error",
+        error: "Network error",
+      });
+    });
+
+    it("handles failed tool results and continues", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
+
+      const toolChunks = makeToolCallStreamChunks([
+        {
+          id: "call_fail",
+          name: "read_file",
+          arguments: JSON.stringify({ path: "/secret" }),
+        },
+      ]);
+      const textChunks = makeStreamChunks("Access denied.");
+
+      vi.mocked(client.chatStream)
+        .mockReturnValueOnce(asyncIterableFrom(toolChunks))
+        .mockReturnValueOnce(asyncIterableFrom(textChunks));
+
+      vi.mocked(orchestrator.execute).mockResolvedValue({
+        success: false,
+        output: "",
+        error: "Permission denied",
+        durationMs: 1,
+        sandboxed: false,
+      });
+
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Read secret"),
+      );
+
+      const toolResults = events.filter((e) => e.type === "tool_result");
+      expect(toolResults).toHaveLength(1);
+      expect(toolResults[0]).toEqual({
+        type: "tool_result",
+        toolCallId: "call_fail",
+        result: "Error: Permission denied",
+        success: false,
+      });
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
     });
   });
 

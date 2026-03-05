@@ -24,3 +24,40 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   temperature: undefined,
   maxTokens: undefined,
 };
+
+// --- Streaming event types ---
+
+export interface TextDeltaEvent {
+  type: "text_delta";
+  content: string;
+}
+
+export interface ToolStartEvent {
+  type: "tool_start";
+  toolName: string;
+  toolCallId: string;
+}
+
+export interface ToolResultEvent {
+  type: "tool_result";
+  toolCallId: string;
+  result: string;
+  success: boolean;
+}
+
+export interface DoneEvent {
+  type: "done";
+  response: AgentResponse;
+}
+
+export interface ErrorEvent {
+  type: "error";
+  error: string;
+}
+
+export type AgentStreamEvent =
+  | TextDeltaEvent
+  | ToolStartEvent
+  | ToolResultEvent
+  | DoneEvent
+  | ErrorEvent;

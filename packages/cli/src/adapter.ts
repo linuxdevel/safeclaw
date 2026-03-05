@@ -16,6 +16,9 @@ export class CliAdapter implements ChannelAdapter {
   private handler:
     | ((msg: InboundMessage) => Promise<OutboundMessage>)
     | null = null;
+  private streamHandler:
+    | ((msg: InboundMessage) => AsyncIterable<OutboundMessage>)
+    | null = null;
   private readonly input: NodeJS.ReadableStream;
   private readonly output: NodeJS.WritableStream;
 
@@ -54,6 +57,12 @@ export class CliAdapter implements ChannelAdapter {
     this.handler = handler;
   }
 
+  onStreamMessage(
+    handler: (msg: InboundMessage) => AsyncIterable<OutboundMessage>,
+  ): void {
+    this.streamHandler = handler;
+  }
+
   async send(_peer: PeerIdentity, content: OutboundMessage): Promise<void> {
     const stream = this.output as NodeJS.WritableStream & {
       write(s: string): boolean;
@@ -68,16 +77,32 @@ export class CliAdapter implements ChannelAdapter {
       return;
     }
 
-    if (!this.handler) {
-      this.rl?.prompt();
-      return;
-    }
-
     const inbound: InboundMessage = {
       peer: this.peer,
       content: trimmed,
       timestamp: new Date(),
     };
+
+    const stream = this.output as NodeJS.WritableStream & {
+      write(s: string): boolean;
+    };
+
+    if (this.streamHandler) {
+      for await (const chunk of this.streamHandler(inbound)) {
+        if (chunk.stream) {
+          stream.write(chunk.content);
+        } else {
+          stream.write("\n");
+        }
+      }
+      this.rl?.prompt();
+      return;
+    }
+
+    if (!this.handler) {
+      this.rl?.prompt();
+      return;
+    }
 
     const response = await this.handler(inbound);
     await this.send(this.peer, response);
