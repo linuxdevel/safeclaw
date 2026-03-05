@@ -6,7 +6,7 @@
 - **pnpm** >= 9.0.0
 - **Linux** with kernel >= 5.13 (required for Landlock, seccomp-BPF, and namespaces)
 - **GNOME Keyring** (`secret-tool`) if using OS keyring for vault encryption (optional; passphrase fallback available)
-- A **GitHub account** with Copilot access
+- A **GitHub account** with Copilot access (for default Copilot provider), or an **OpenAI** or **Anthropic** API key
 
 ### Verifying kernel support
 
@@ -36,7 +36,7 @@ pnpm build
 
 ## First run: onboarding wizard
 
-On first run, SafeClaw walks you through a five-step onboarding wizard.
+On first run, SafeClaw walks you through a six-step onboarding wizard.
 
 ```bash
 safeclaw onboard
@@ -139,7 +139,22 @@ Select model (1-5) [1]: 1
   Selected: claude-sonnet-4
 ```
 
-The selection is saved in the vault. After this step, onboarding is complete.
+The selection is saved in the vault.
+
+### Step 6: Configure Model Providers (Optional)
+
+Optionally provide API keys for alternative LLM providers:
+
+```
+=== Step 6: Configure Model Providers (Optional) ===
+
+  Press Enter to skip any provider you don't want to configure.
+
+OpenAI API key (Enter to skip):
+Anthropic API key (Enter to skip):
+```
+
+If you provide one or more API keys, you'll be prompted to select a default provider. API keys are stored encrypted in the vault using AES-256-GCM.
 
 ## Starting the CLI
 
@@ -195,5 +210,8 @@ SafeClaw stores configuration and secrets in the encrypted vault. Key vault entr
 | `github_token` | GitHub OAuth access token |
 | `signing_private_key` | Ed25519 private key for signing manifests |
 | `default_model` | Selected default LLM model |
+| `provider` | Default LLM provider (`copilot`, `openai`, or `anthropic`) |
+| `openai_api_key` | OpenAI API key (optional) |
+| `anthropic_api_key` | Anthropic API key (optional) |
 
 The gateway binds to `127.0.0.1:18789` by default with a rate limit of 60 requests per 60-second window. The auth token must be at least 32 characters. See [Security Model](security-model.md) for details.

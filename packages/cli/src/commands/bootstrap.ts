@@ -21,8 +21,11 @@ import {
   SkillLoader,
   loadConfig as defaultLoadConfig,
   ContextCompactor,
+  CopilotProvider,
+  OpenAIProvider,
+  AnthropicProvider,
 } from "@safeclaw/core";
-import type { CopilotToken, CopilotModel } from "@safeclaw/core";
+import type { CopilotToken, CopilotModel, ModelProvider } from "@safeclaw/core";
 import {
   Vault,
   KeyringProvider as DefaultKeyringProvider,
@@ -127,14 +130,13 @@ export async function bootstrapAgent(
     );
   }
 
-  // 5. Exchange for Copilot token
-  const copilotToken = await exchangeToken(githubToken);
-
-  // 6. Build Agent stack
+  // 5. Build Agent stack
   // Precedence: vault > config file > defaults
   const vaultModel = vault.get("default_model") as CopilotModel | undefined;
   const model = vaultModel ?? config.model ?? DEFAULT_AGENT_CONFIG.model;
-  const client = new CopilotClient(copilotToken);
+
+  const providerId = vault.get("provider") ?? "copilot";
+  const provider = await createProvider(providerId, vault, exchangeToken, githubToken);
 
   const capabilityRegistry = new CapabilityRegistry();
 
@@ -190,7 +192,7 @@ export async function bootstrapAgent(
       : undefined,
   );
   const compactor = new ContextCompactor({
-    client,
+    provider,
     model,
     maxContextTokens: config.maxContextTokens ?? DEFAULT_AGENT_CONFIG.maxContextTokens ?? 100_000,
     preserveRecentMessages: 10,
@@ -205,7 +207,7 @@ export async function bootstrapAgent(
       maxTokens: config.maxTokens,
       skillId: manifest.id,
     },
-    client,
+    provider,
     orchestrator,
     compactor,
   );
@@ -219,6 +221,47 @@ export async function bootstrapAgent(
   const auditLog = new AuditLog();
 
   return { agent, sessionManager, capabilityRegistry, auditLog };
+}
+
+async function createProvider(
+  providerId: string,
+  vault: { get(name: string): string | undefined },
+  exchangeToken: (githubToken: string) => Promise<CopilotToken>,
+  githubToken: string,
+): Promise<ModelProvider> {
+  switch (providerId) {
+    case "copilot": {
+      const copilotToken = await exchangeToken(githubToken);
+      const client = new CopilotClient(copilotToken);
+      return new CopilotProvider(client);
+    }
+    case "openai": {
+      const apiKey = vault.get("openai_api_key");
+      if (!apiKey) {
+        throw new Error(
+          "No openai_api_key in vault. Run 'safeclaw onboard' to add your OpenAI API key.",
+        );
+      }
+      const baseUrl = vault.get("openai_base_url");
+      return new OpenAIProvider({
+        apiKey,
+        ...(baseUrl ? { baseUrl } : {}),
+      });
+    }
+    case "anthropic": {
+      const apiKey = vault.get("anthropic_api_key");
+      if (!apiKey) {
+        throw new Error(
+          "No anthropic_api_key in vault. Run 'safeclaw onboard' to add your Anthropic API key.",
+        );
+      }
+      return new AnthropicProvider({ apiKey });
+    }
+    default:
+      throw new Error(
+        `Unknown provider "${providerId}". Supported: copilot, openai, anthropic`,
+      );
+  }
 }
 
 interface ResolveKeyOpts {

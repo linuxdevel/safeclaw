@@ -98,6 +98,9 @@ function createBaseOptions(
     deriveKey: vi.fn().mockResolvedValue(Buffer.alloc(32, 0xaa)),
     generateKeyPair: () => mockKeyPair,
     writeSalt: vi.fn(),
+    // Step 6 prompts for OpenAI and Anthropic keys via readPassphrase;
+    // return empty strings to skip provider configuration by default.
+    readPassphrase: vi.fn().mockResolvedValue(""),
   };
 }
 
@@ -252,7 +255,9 @@ describe("runOnboarding", () => {
 
     const readPassphrase = vi.fn()
       .mockResolvedValueOnce("my-secret-pass")  // Enter passphrase
-      .mockResolvedValueOnce("my-secret-pass");  // Confirm passphrase
+      .mockResolvedValueOnce("my-secret-pass")  // Confirm passphrase
+      .mockResolvedValueOnce("")                 // Skip OpenAI key
+      .mockResolvedValueOnce("");                // Skip Anthropic key
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
@@ -420,7 +425,9 @@ describe("runOnboarding", () => {
 
     const readPassphrase = vi.fn()
       .mockResolvedValueOnce("my-secret-pass")
-      .mockResolvedValueOnce("my-secret-pass");
+      .mockResolvedValueOnce("my-secret-pass")
+      .mockResolvedValueOnce("")                 // Skip OpenAI key
+      .mockResolvedValueOnce("");                // Skip Anthropic key
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),
@@ -451,7 +458,9 @@ describe("runOnboarding", () => {
 
     const readPassphrase = vi.fn()
       .mockResolvedValueOnce("my-secret-pass")
-      .mockResolvedValueOnce("my-secret-pass");
+      .mockResolvedValueOnce("my-secret-pass")
+      .mockResolvedValueOnce("")                 // Skip OpenAI key
+      .mockResolvedValueOnce("");                // Skip Anthropic key
 
     const options: OnboardOptions = {
       ...createBaseOptions(input, output),

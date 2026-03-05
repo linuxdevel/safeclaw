@@ -1,21 +1,21 @@
-import type { CopilotClient } from "../copilot/client.js";
+import type { ModelProvider } from "../providers/types.js";
 import type { ChatMessage, CopilotModel } from "../copilot/types.js";
 
 export interface ContextCompactorConfig {
-  client: CopilotClient;
+  provider: ModelProvider;
   model: CopilotModel;
   maxContextTokens: number;
   preserveRecentMessages: number;
 }
 
 export class ContextCompactor {
-  private readonly client: CopilotClient;
+  private readonly provider: ModelProvider;
   private readonly model: CopilotModel;
   private readonly maxContextTokens: number;
   private readonly preserveRecentMessages: number;
 
   constructor(config: ContextCompactorConfig) {
-    this.client = config.client;
+    this.provider = config.provider;
     this.model = config.model;
     this.maxContextTokens = config.maxContextTokens;
     this.preserveRecentMessages = config.preserveRecentMessages;
@@ -127,7 +127,7 @@ export class ContextCompactor {
       })
       .join("\n");
 
-    const response = await this.client.chat({
+    const response = await this.provider.chat({
       model: this.model,
       messages: [
         {

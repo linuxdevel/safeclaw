@@ -416,6 +416,54 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     // Step 5: Select default model
     const selectedModel = await selectModel(reader, output, vault, options.listModels);
 
+    // Step 6: Optional provider API keys
+    print(output, "=== Step 6: Configure Model Providers (Optional) ===\n");
+    print(output, "  Press Enter to skip any provider you don't want to configure.\n");
+
+    reader.pause();
+    let openaiKey: string;
+    let anthropicKey: string;
+    try {
+      openaiKey = await readPass("OpenAI API key (Enter to skip): ", input, output);
+    } finally {
+      reader.resume();
+    }
+    if (openaiKey.trim()) {
+      vault.set("openai_api_key", openaiKey.trim());
+      print(output, "  OpenAI API key stored.");
+    }
+
+    reader.pause();
+    try {
+      anthropicKey = await readPass("Anthropic API key (Enter to skip): ", input, output);
+    } finally {
+      reader.resume();
+    }
+    if (anthropicKey.trim()) {
+      vault.set("anthropic_api_key", anthropicKey.trim());
+      print(output, "  Anthropic API key stored.");
+    }
+
+    if (openaiKey.trim() || anthropicKey.trim()) {
+      const providers = ["copilot"];
+      if (openaiKey.trim()) providers.push("openai");
+      if (anthropicKey.trim()) providers.push("anthropic");
+      print(output, `\n  Available providers: ${providers.join(", ")}`);
+
+      const selectedProvider = await reader.ask(`Default provider [copilot]: `);
+      const trimmedProvider = selectedProvider.trim();
+      if (trimmedProvider && providers.includes(trimmedProvider)) {
+        vault.set("provider", trimmedProvider);
+        print(output, `  Default provider set to: ${trimmedProvider}\n`);
+      } else if (trimmedProvider) {
+        print(output, `  Unknown provider "${trimmedProvider}", keeping default (copilot).\n`);
+      } else {
+        print(output, "");
+      }
+    } else {
+      print(output, "  No additional providers configured.\n");
+    }
+
     // Save vault
     vault.save();
 

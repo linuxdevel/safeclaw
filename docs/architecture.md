@@ -22,10 +22,10 @@
 │              └───────┬────────┘                                │
 │                      │                                         │
 │                      ▼                                         │
-│              ┌────────────────┐     ┌──────────────────┐       │
-│              │    Agent       │────▶│  Copilot Client   │       │
-│              │  (LLM loop)   │◀────│  (GitHub API)     │       │
-│              └───────┬────────┘     └──────────────────┘       │
+│              ┌────────────────┐     ┌───────────────────────────────┐
+│              │    Agent       │────▶│  Model Provider               │
+│              │  (LLM loop)   │◀────│  (Copilot / OpenAI / Anthropic)│
+│              └───────┬────────┘     └───────────────────────────────┘
 │                      │                                         │
 │                      ▼                                         │
 │              ┌────────────────┐                                │
@@ -94,6 +94,13 @@ Central package containing the agent runtime and security infrastructure.
 - `CopilotClient`: chat completions (non-streaming and streaming SSE)
 - Types: `CopilotModel`, `ChatMessage`, `ChatCompletionRequest/Response`, `StreamChunk`
 
+**Providers** (`providers/`):
+- `ModelProvider` interface: common `chat()` and `chatStream()` methods for all LLM backends
+- `CopilotProvider`: wraps `CopilotClient` for GitHub Copilot API
+- `OpenAIProvider`: native `fetch` against OpenAI chat completions API
+- `AnthropicProvider`: translates between OpenAI wire format and Anthropic Messages API
+- `ProviderRegistry`: manages available provider instances
+
 **Sessions** (`sessions/`):
 - `Session`: conversation history management
 - `SessionManager`: per-channel-per-peer session lookup, creation, destruction
@@ -113,7 +120,7 @@ Central package containing the agent runtime and security infrastructure.
 - `InboundMessage` / `OutboundMessage` / `PeerIdentity` types
 
 **Agent** (`agent/`):
-- `Agent` class: LLM loop with tool calling (send messages, process tool calls, loop until final response)
+- `Agent` class: LLM loop with tool calling (send messages to configured ModelProvider, process tool calls, loop until final response)
 - `DEFAULT_AGENT_CONFIG`: claude-sonnet-4, max 10 tool rounds
 
 Dependencies: `@safeclaw/sandbox` (types only).
@@ -177,12 +184,11 @@ Session Manager
 Agent.processMessage(session, userMessage)
   │ 1. Add user message to session history
   │ 2. Build request: system prompt + history
-  │ 3. Send to Copilot API (chat completions)
+  │ 3. Send to the configured model provider
   │
   ▼
-Copilot Client
-  │ POST https://api.githubcopilot.com/chat/completions
-  │ Authorization: Bearer <copilot-token>
+Model Provider (CopilotProvider / OpenAIProvider / AnthropicProvider)
+  │ Sends request to configured LLM API
   │ Returns: ChatCompletionResponse with choices
   │
   ▼
@@ -204,7 +210,7 @@ Agent (response handling)
   │     │
   │     ▼
   │   Agent adds tool result to session
-  │   Loop back to Copilot API with updated history
+  │   Loop back to model provider with updated history
   │
   │ If finish_reason == "stop":
   │   Add assistant message to session
@@ -287,9 +293,9 @@ The audit log maintains the last N entries in memory (default: 100). The `safecl
 
 SafeClaw v1 targets Linux exclusively. The sandboxing architecture depends on Landlock (kernel >= 5.13), seccomp-BPF, and Linux namespaces. These have no direct equivalents on macOS or Windows. Future versions may add platform-specific sandboxing.
 
-### GitHub Copilot API only
+### Multi-provider LLM support
 
-SafeClaw uses the GitHub Copilot API as its sole LLM provider. This simplifies the codebase (one API surface, one auth flow) and provides access to multiple models (Claude, GPT-4.1, Gemini, o4-mini) through a single endpoint. The device flow OAuth handles authentication without requiring API keys in configuration files.
+SafeClaw supports multiple LLM providers through the `ModelProvider` interface: GitHub Copilot (default, using device flow OAuth), OpenAI (API key), and Anthropic (API key). All providers implement the same `chat()` and `chatStream()` methods using the OpenAI chat completions wire format as the common interface. Providers that use a different wire format (e.g. Anthropic) translate internally. Provider selection is vault-driven — the `provider` key in the vault determines which backend is used. API keys for third-party providers are stored encrypted in the vault alongside other secrets.
 
 ### Fail-closed defaults
 

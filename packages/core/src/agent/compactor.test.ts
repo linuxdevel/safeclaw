@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { ContextCompactor } from "./compactor.js";
-import type { CopilotClient } from "../copilot/client.js";
+import type { ModelProvider } from "../providers/types.js";
 import type { ChatMessage } from "../copilot/types.js";
 
 function makeCompactor(overrides: { maxContextTokens?: number; preserveRecentMessages?: number } = {}) {
-  const client = { chat: vi.fn() } as unknown as CopilotClient;
+  const client = { chat: vi.fn() } as unknown as ModelProvider;
   return { compactor: new ContextCompactor({
-    client,
+    provider: client,
     model: "claude-sonnet-4",
     maxContextTokens: overrides.maxContextTokens ?? 1000,
     preserveRecentMessages: overrides.preserveRecentMessages ?? 10,
@@ -71,9 +71,9 @@ describe("ContextCompactor", () => {
 
   describe("compact", () => {
     it("preserves the last N messages and summarizes the rest", async () => {
-      const client = { chat: vi.fn() } as unknown as CopilotClient;
+      const client = { chat: vi.fn() } as unknown as ModelProvider;
       const compactor = new ContextCompactor({
-        client,
+        provider: client,
         model: "claude-sonnet-4",
         maxContextTokens: 1000,
         preserveRecentMessages: 2,
@@ -114,9 +114,9 @@ describe("ContextCompactor", () => {
     });
 
     it("does not split assistant+tool_calls from following tool results", async () => {
-      const client = { chat: vi.fn() } as unknown as CopilotClient;
+      const client = { chat: vi.fn() } as unknown as ModelProvider;
       const compactor = new ContextCompactor({
-        client,
+        provider: client,
         model: "claude-sonnet-4",
         maxContextTokens: 1000,
         preserveRecentMessages: 2,
@@ -171,9 +171,9 @@ describe("ContextCompactor", () => {
     });
 
     it("returns history unchanged when too few messages to compact", async () => {
-      const client = { chat: vi.fn() } as unknown as CopilotClient;
+      const client = { chat: vi.fn() } as unknown as ModelProvider;
       const compactor = new ContextCompactor({
-        client,
+        provider: client,
         model: "claude-sonnet-4",
         maxContextTokens: 1000,
         preserveRecentMessages: 10,
@@ -193,9 +193,9 @@ describe("ContextCompactor", () => {
     });
 
     it("sends old messages to LLM with summarization prompt", async () => {
-      const client = { chat: vi.fn() } as unknown as CopilotClient;
+      const client = { chat: vi.fn() } as unknown as ModelProvider;
       const compactor = new ContextCompactor({
-        client,
+        provider: client,
         model: "claude-sonnet-4",
         maxContextTokens: 1000,
         preserveRecentMessages: 1,

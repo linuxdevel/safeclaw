@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./types.js";
 import type { ContextCompactor } from "./compactor.js";
-import type { CopilotClient } from "../copilot/client.js";
+import type { ModelProvider } from "../providers/types.js";
 import type {
   ChatCompletionResponse,
   ChatMessage,
@@ -80,10 +80,11 @@ function createMocks() {
     }),
   } as unknown as Session;
 
-  const client = {
+  const provider = {
+    id: "test",
     chat: vi.fn(),
     chatStream: vi.fn(),
-  } as unknown as CopilotClient;
+  } as unknown as ModelProvider;
 
   const toolRegistry = {
     list: vi.fn(() => [] as ToolHandler[]),
@@ -99,7 +100,7 @@ function createMocks() {
   (orchestrator as unknown as { toolRegistry: ToolRegistry }).toolRegistry =
     toolRegistry;
 
-  return { session, client, orchestrator, toolRegistry, history };
+  return { session, provider, orchestrator, toolRegistry, history };
 }
 
 function makeStreamChunks(
@@ -228,13 +229,13 @@ async function collectEvents(
 describe("Agent", () => {
   describe("processMessage", () => {
     it("adds user message to session", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("Hello there!"),
       );
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       await agent.processMessage(session, "Hi");
 
       expect(session.addMessage).toHaveBeenCalledWith(
@@ -243,17 +244,17 @@ describe("Agent", () => {
     });
 
     it("calls copilot client with system prompt and history", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("Sure thing!"),
       );
 
       const config = makeConfig({ systemPrompt: "Be helpful." });
-      const agent = new Agent(config, client, orchestrator);
+      const agent = new Agent(config, provider, orchestrator);
       await agent.processMessage(session, "Do something");
 
-      expect(client.chat).toHaveBeenCalledWith(
+      expect(provider.chat).toHaveBeenCalledWith(
         expect.objectContaining({
           model: "claude-sonnet-4",
           messages: expect.arrayContaining([
@@ -267,13 +268,13 @@ describe("Agent", () => {
     });
 
     it("returns assistant response with message and metadata", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("Here is my answer."),
       );
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const result = await agent.processMessage(session, "Question?");
 
       expect(result).toEqual({
@@ -284,13 +285,13 @@ describe("Agent", () => {
     });
 
     it("adds final assistant message to session history", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("Final answer."),
       );
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       await agent.processMessage(session, "Tell me");
 
       // First call: user message, Second call: assistant message
@@ -306,7 +307,7 @@ describe("Agent", () => {
     });
 
     it("handles tool calls: executes tool, adds result, calls LLM again", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       const handler = makeToolHandler();
       vi.mocked(toolRegistry.list).mockReturnValue([handler]);
 
@@ -325,7 +326,7 @@ describe("Agent", () => {
       // Second response: final answer
       const finalResponse = makeResponse("The file contains localhost.");
 
-      vi.mocked(client.chat)
+      vi.mocked(provider.chat)
         .mockResolvedValueOnce(toolCallResponse)
         .mockResolvedValueOnce(finalResponse);
 
@@ -336,7 +337,7 @@ describe("Agent", () => {
         sandboxed: false,
       });
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const result = await agent.processMessage(session, "Read the hosts file");
 
       // Orchestrator should have been called
@@ -348,7 +349,7 @@ describe("Agent", () => {
       );
 
       // Client should have been called twice
-      expect(client.chat).toHaveBeenCalledTimes(2);
+      expect(provider.chat).toHaveBeenCalledTimes(2);
 
       // Result should be from the final response
       expect(result.message).toBe("The file contains localhost.");
@@ -356,7 +357,7 @@ describe("Agent", () => {
     });
 
     it("handles multiple tool calls in a single response", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([
         makeToolHandler({ name: "read_file" }),
         makeToolHandler({ name: "list_dir" }),
@@ -381,7 +382,7 @@ describe("Agent", () => {
         },
       ]);
 
-      vi.mocked(client.chat)
+      vi.mocked(provider.chat)
         .mockResolvedValueOnce(toolCallResponse)
         .mockResolvedValueOnce(makeResponse("Done."));
 
@@ -392,7 +393,7 @@ describe("Agent", () => {
         sandboxed: false,
       });
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const result = await agent.processMessage(session, "Do both");
 
       expect(orchestrator.execute).toHaveBeenCalledTimes(2);
@@ -401,11 +402,11 @@ describe("Agent", () => {
     });
 
     it("enforces maxToolRounds and stops after limit", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
       // Always return tool calls — infinite loop
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("thinking...", [
           {
             id: "call_loop",
@@ -426,28 +427,28 @@ describe("Agent", () => {
       });
 
       const config = makeConfig({ maxToolRounds: 3 });
-      const agent = new Agent(config, client, orchestrator);
+      const agent = new Agent(config, provider, orchestrator);
       const result = await agent.processMessage(session, "Loop forever");
 
       // Should have stopped after 3 rounds, not gone infinite
       // client.chat called 3 times: each round calls chat then executes tools
-      expect(client.chat).toHaveBeenCalledTimes(3);
+      expect(provider.chat).toHaveBeenCalledTimes(3);
       expect(result.message).toContain("tool");
     });
 
     it("includes tool definitions in chat request", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       const handler = makeToolHandler({
         name: "search",
         description: "Search for text",
       });
       vi.mocked(toolRegistry.list).mockReturnValue([handler]);
-      vi.mocked(client.chat).mockResolvedValue(makeResponse("No results."));
+      vi.mocked(provider.chat).mockResolvedValue(makeResponse("No results."));
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       await agent.processMessage(session, "Search for foo");
 
-      const chatCall = vi.mocked(client.chat).mock.calls[0]![0];
+      const chatCall = vi.mocked(provider.chat).mock.calls[0]![0];
       expect(chatCall.tools).toBeDefined();
       expect(chatCall.tools).toEqual(
         expect.arrayContaining([
@@ -463,10 +464,10 @@ describe("Agent", () => {
     });
 
     it("passes failed tool result as error message", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
-      vi.mocked(client.chat)
+      vi.mocked(provider.chat)
         .mockResolvedValueOnce(
           makeResponse("", [
             {
@@ -489,7 +490,7 @@ describe("Agent", () => {
         sandboxed: false,
       });
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       await agent.processMessage(session, "Read secret");
 
       // The tool result message should contain the error
@@ -500,10 +501,10 @@ describe("Agent", () => {
     });
 
     it("uses configured skillId for tool execution requests", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
-      vi.mocked(client.chat)
+      vi.mocked(provider.chat)
         .mockResolvedValueOnce(
           makeResponse("", [
             {
@@ -526,7 +527,7 @@ describe("Agent", () => {
       });
 
       const config = makeConfig({ skillId: "my-custom-skill" });
-      const agent = new Agent(config, client, orchestrator);
+      const agent = new Agent(config, provider, orchestrator);
       await agent.processMessage(session, "Read a file");
 
       expect(orchestrator.execute).toHaveBeenCalledWith(
@@ -539,15 +540,15 @@ describe("Agent", () => {
     });
 
     it("passes temperature and maxTokens to chat request", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(makeResponse("Ok."));
+      vi.mocked(provider.chat).mockResolvedValue(makeResponse("Ok."));
 
       const config = makeConfig({ temperature: 0.5, maxTokens: 1000 });
-      const agent = new Agent(config, client, orchestrator);
+      const agent = new Agent(config, provider, orchestrator);
       await agent.processMessage(session, "Hello");
 
-      const chatCall = vi.mocked(client.chat).mock.calls[0]![0];
+      const chatCall = vi.mocked(provider.chat).mock.calls[0]![0];
       expect(chatCall.temperature).toBe(0.5);
       expect(chatCall.max_tokens).toBe(1000);
     });
@@ -555,15 +556,15 @@ describe("Agent", () => {
 
   describe("processMessageStream", () => {
     it("yields text_delta events for each content chunk", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
       const chunks = makeStreamChunks("Hi!");
-      vi.mocked(client.chatStream).mockReturnValue(
+      vi.mocked(provider.chatStream).mockReturnValue(
         asyncIterableFrom(chunks),
       );
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Hello"),
       );
@@ -574,15 +575,15 @@ describe("Agent", () => {
     });
 
     it("emits done event with complete AgentResponse", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
       const chunks = makeStreamChunks("Done.");
-      vi.mocked(client.chatStream).mockReturnValue(
+      vi.mocked(provider.chatStream).mockReturnValue(
         asyncIterableFrom(chunks),
       );
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Finish"),
       );
@@ -600,7 +601,7 @@ describe("Agent", () => {
     });
 
     it("accumulates tool calls from stream and executes them", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
       // First stream: tool call
@@ -615,7 +616,7 @@ describe("Agent", () => {
       // Second stream: final text
       const textChunks = makeStreamChunks("File contents here.");
 
-      vi.mocked(client.chatStream)
+      vi.mocked(provider.chatStream)
         .mockReturnValueOnce(asyncIterableFrom(toolChunks))
         .mockReturnValueOnce(asyncIterableFrom(textChunks));
 
@@ -626,7 +627,7 @@ describe("Agent", () => {
         sandboxed: false,
       });
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Read hosts"),
       );
@@ -657,7 +658,7 @@ describe("Agent", () => {
     });
 
     it("enforces maxToolRounds and emits done", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
       const toolChunks = makeToolCallStreamChunks([
@@ -669,7 +670,7 @@ describe("Agent", () => {
       ]);
 
       // Always return tool calls
-      vi.mocked(client.chatStream).mockReturnValue(
+      vi.mocked(provider.chatStream).mockReturnValue(
         asyncIterableFrom(toolChunks),
       );
 
@@ -681,7 +682,7 @@ describe("Agent", () => {
       });
 
       const config = makeConfig({ maxToolRounds: 1 });
-      const agent = new Agent(config, client, orchestrator);
+      const agent = new Agent(config, provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Loop"),
       );
@@ -690,11 +691,11 @@ describe("Agent", () => {
       expect(doneEvents).toHaveLength(1);
       const done = doneEvents[0] as { type: "done"; response: { message: string; toolCallsMade: number } };
       expect(done.response.message).toContain("tool");
-      expect(client.chatStream).toHaveBeenCalledTimes(1);
+      expect(provider.chatStream).toHaveBeenCalledTimes(1);
     });
 
     it("emits error event on stream failure", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
       // eslint-disable-next-line require-yield
@@ -702,9 +703,9 @@ describe("Agent", () => {
         throw new Error("Network error");
       }
 
-      vi.mocked(client.chatStream).mockReturnValue(failingStream());
+      vi.mocked(provider.chatStream).mockReturnValue(failingStream());
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Fail"),
       );
@@ -718,7 +719,7 @@ describe("Agent", () => {
     });
 
     it("handles failed tool results and continues", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
 
       const toolChunks = makeToolCallStreamChunks([
@@ -730,7 +731,7 @@ describe("Agent", () => {
       ]);
       const textChunks = makeStreamChunks("Access denied.");
 
-      vi.mocked(client.chatStream)
+      vi.mocked(provider.chatStream)
         .mockReturnValueOnce(asyncIterableFrom(toolChunks))
         .mockReturnValueOnce(asyncIterableFrom(textChunks));
 
@@ -742,7 +743,7 @@ describe("Agent", () => {
         sandboxed: false,
       });
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const events = await collectEvents(
         agent.processMessageStream(session, "Read secret"),
       );
@@ -763,14 +764,14 @@ describe("Agent", () => {
 
   describe("getToolDefinitions", () => {
     it("converts tool handlers to API format", () => {
-      const { client, orchestrator, toolRegistry } = createMocks();
+      const { provider, orchestrator, toolRegistry } = createMocks();
       const handler = makeToolHandler({
         name: "write_file",
         description: "Write to a file",
       });
       vi.mocked(toolRegistry.list).mockReturnValue([handler]);
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const defs = agent.getToolDefinitions();
 
       expect(defs).toHaveLength(1);
@@ -792,10 +793,10 @@ describe("Agent", () => {
     });
 
     it("returns empty array when no tools registered", () => {
-      const { client, orchestrator, toolRegistry } = createMocks();
+      const { provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const defs = agent.getToolDefinitions();
 
       expect(defs).toEqual([]);
@@ -804,11 +805,11 @@ describe("Agent", () => {
 
   describe("context compaction", () => {
     it("compacts session history when prompt_tokens exceeds threshold", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
       // Return high token usage that triggers compaction
-      vi.mocked(client.chat).mockResolvedValue({
+      vi.mocked(provider.chat).mockResolvedValue({
         id: "resp-1",
         model: "claude-sonnet-4",
         choices: [
@@ -825,7 +826,7 @@ describe("Agent", () => {
         ]),
       } as unknown as ContextCompactor;
 
-      const agent = new Agent(makeConfig(), client, orchestrator, compactor);
+      const agent = new Agent(makeConfig(), provider, orchestrator, compactor);
       await agent.processMessage(session, "Hello");
 
       expect(compactor.shouldCompact).toHaveBeenCalledWith(85000);
@@ -833,10 +834,10 @@ describe("Agent", () => {
     });
 
     it("does not compact when prompt_tokens is below threshold", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
 
-      vi.mocked(client.chat).mockResolvedValue(
+      vi.mocked(provider.chat).mockResolvedValue(
         makeResponse("Hello there!"),
       );
 
@@ -845,7 +846,7 @@ describe("Agent", () => {
         compact: vi.fn(),
       } as unknown as ContextCompactor;
 
-      const agent = new Agent(makeConfig(), client, orchestrator, compactor);
+      const agent = new Agent(makeConfig(), provider, orchestrator, compactor);
       await agent.processMessage(session, "Hi");
 
       expect(compactor.shouldCompact).toHaveBeenCalledWith(10); // from makeResponse usage
@@ -853,12 +854,12 @@ describe("Agent", () => {
     });
 
     it("works without a compactor (backward compatible)", async () => {
-      const { session, client, orchestrator, toolRegistry } = createMocks();
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
       vi.mocked(toolRegistry.list).mockReturnValue([]);
-      vi.mocked(client.chat).mockResolvedValue(makeResponse("Hello!"));
+      vi.mocked(provider.chat).mockResolvedValue(makeResponse("Hello!"));
 
       // No compactor passed — should work fine
-      const agent = new Agent(makeConfig(), client, orchestrator);
+      const agent = new Agent(makeConfig(), provider, orchestrator);
       const result = await agent.processMessage(session, "Hi");
 
       expect(result.message).toBe("Hello!");

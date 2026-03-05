@@ -4,7 +4,7 @@
 
 ## What This Project Is
 
-SafeClaw is an AI coding assistant that wraps the GitHub Copilot API with mandatory OS-level sandboxing, capability-based access control, encrypted secret storage, and signed skill verification. Every tool execution is sandboxed via Linux kernel features (Landlock, seccomp-BPF, namespaces). There is no way to disable security enforcement -- it is structural.
+SafeClaw is an AI coding assistant with multi-provider LLM support (GitHub Copilot, OpenAI, Anthropic), mandatory OS-level sandboxing, capability-based access control, encrypted secret storage, and signed skill verification. Every tool execution is sandboxed via Linux kernel features (Landlock, seccomp-BPF, namespaces). There is no way to disable security enforcement -- it is structural.
 
 The target user is an individual developer who wants AI-assisted coding with strong guarantees against prompt injection, malicious tool calls, and data exfiltration.
 
@@ -45,7 +45,15 @@ vault (standalone)     sandbox (standalone)
 ## Key Architectural Concepts
 
 ### Agent Loop
-`packages/core/src/agent/agent.ts` -- Multi-round tool-calling loop. Sends messages to Copilot API, receives tool call requests, executes them through the ToolOrchestrator, feeds results back. Continues until the model produces a final text response.
+`packages/core/src/agent/agent.ts` -- Multi-round tool-calling loop. Sends messages to the configured model provider, receives tool call requests, executes them through the ToolOrchestrator, feeds results back. Continues until the model produces a final text response.
+
+### Model Providers
+- `packages/core/src/providers/types.ts` -- `ModelProvider` interface (common `chat()` and `chatStream()` methods)
+- `packages/core/src/providers/copilot.ts` -- `CopilotProvider` wraps existing `CopilotClient`
+- `packages/core/src/providers/openai.ts` -- `OpenAIProvider` uses native `fetch` against OpenAI API
+- `packages/core/src/providers/anthropic.ts` -- `AnthropicProvider` translates OpenAI wire format to/from Anthropic Messages API
+- `packages/core/src/providers/registry.ts` -- `ProviderRegistry` manages available providers
+- Provider selection is vault-driven: `vault.get("provider")` returns `"copilot"` (default), `"openai"`, or `"anthropic"`
 
 ### Capability System
 - `packages/core/src/capabilities/registry.ts` -- Tracks which skills have which capabilities
@@ -94,10 +102,10 @@ The main entry point is `packages/cli/src/cli.ts` (registered as `safeclaw` bina
 
 Bootstrap flow (`packages/cli/src/commands/bootstrap.ts`):
 1. Open vault (keyring or passphrase)
-2. Read GitHub token from vault
-3. Exchange for Copilot API token
+2. Read provider config from vault (`provider` key, defaults to `"copilot"`)
+3. Create appropriate `ModelProvider` (CopilotProvider, OpenAIProvider, or AnthropicProvider)
 4. Load builtin skill manifest
-5. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> Agent
+5. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
 6. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
 
 CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `help`, `version`
@@ -114,7 +122,7 @@ CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `help`, `v
 | Tests | Vitest 4.x with v8 coverage |
 | Linter | OxLint 1.50+ |
 | Native code | C11, statically linked with musl-gcc |
-| LLM API | GitHub Copilot API (chat completions, device flow OAuth) |
+| LLM API | Multi-provider: GitHub Copilot (device flow OAuth), OpenAI, Anthropic |
 | Crypto | Node.js `crypto` -- AES-256-GCM, scrypt, Ed25519 |
 | CI | GitHub Actions |
 

@@ -1,9 +1,9 @@
-import type { CopilotClient } from "../copilot/client.js";
 import type {
   ChatCompletionRequest,
   ChatMessage,
   ToolDefinitionParam,
 } from "../copilot/types.js";
+import type { ModelProvider } from "../providers/types.js";
 import type { Session } from "../sessions/session.js";
 import type { ToolOrchestrator } from "../tools/orchestrator.js";
 import type { ContextCompactor } from "./compactor.js";
@@ -11,18 +11,18 @@ import type { AgentConfig, AgentResponse, AgentStreamEvent } from "./types.js";
 
 export class Agent {
   private readonly config: AgentConfig;
-  private readonly client: CopilotClient;
+  private readonly provider: ModelProvider;
   private readonly orchestrator: ToolOrchestrator;
   private readonly compactor?: ContextCompactor | undefined;
 
   constructor(
     config: AgentConfig,
-    client: CopilotClient,
+    provider: ModelProvider,
     orchestrator: ToolOrchestrator,
     compactor?: ContextCompactor,
   ) {
     this.config = config;
-    this.client = client;
+    this.provider = provider;
     this.orchestrator = orchestrator;
     this.compactor = compactor;
   }
@@ -58,7 +58,7 @@ export class Agent {
       };
 
       // 3. Call client.chat()
-      const response = await this.client.chat(request);
+      const response = await this.provider.chat(request);
 
       // Check if context compaction is needed
       if (this.compactor && this.compactor.shouldCompact(response.usage.prompt_tokens)) {
@@ -177,7 +177,7 @@ export class Agent {
         >();
         let finishReason: string | null = null;
 
-        for await (const chunk of this.client.chatStream(request)) {
+        for await (const chunk of this.provider.chatStream(request)) {
           const choice = chunk.choices[0];
           if (!choice) continue;
 

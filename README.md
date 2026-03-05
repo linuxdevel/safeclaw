@@ -24,7 +24,7 @@ After install, run `safeclaw onboard` for first-time setup.
 - Zero-trust security model with mandatory OS-level sandboxing (Landlock + seccomp-BPF + Linux namespaces)
 - AES-256-GCM encrypted secrets vault with OS keyring or passphrase-derived keys
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
-- GitHub Copilot API integration (Claude Sonnet 4 default)
+- Multi-provider LLM support: GitHub Copilot, OpenAI, and Anthropic (Claude Sonnet 4 default)
 - Interactive CLI and browser-based WebChat channels
 - Built-in tools: file read/write/edit, bash execution, web fetch — all capability-gated
 - 5-step onboarding wizard with kernel capability detection
@@ -55,6 +55,14 @@ After install, run `safeclaw onboard` for first-time setup.
 | `safeclaw audit` CLI command | Done | Wired into CLI; calls bootstrapAgent and runAudit |
 | Path normalization in capability enforcer | Done | resolve()-based normalization prevents traversal |
 | Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |
+| Tool parameter schemas (JSON Schema) | Done | All builtin tools declare parameter schemas |
+| Streaming responses | Done | SSE-based streaming in agent loop and channels |
+| Chat slash commands | Done | /help, /model, /clear, /compact, /session, /sessions, /export |
+| Configuration file (safeclaw.json) | Done | Model, prompt, tool rounds, gateway, sandbox settings |
+| Session persistence (FileSessionStore) | Done | Sessions survive restarts; file-backed store |
+| Context compaction | Done | LLM-powered conversation summarization at 80% context threshold |
+| WebSocket gateway | Done | Real-time bidirectional communication |
+| Multi-model provider support | Done | ModelProvider interface; Copilot, OpenAI, Anthropic providers |
 
 ## Roadmap
 
@@ -62,14 +70,14 @@ Planned features with implementation plans (in priority order):
 
 | # | Feature | Plan | Priority | Status |
 |---|---------|------|----------|--------|
-| 1 | Tool parameter schemas | [plan](docs/plans/2026-03-03-tool-parameter-schemas.md) | High | Planned |
-| 2 | Streaming responses | [plan](docs/plans/2026-03-03-streaming-responses.md) | High | Planned |
-| 3 | Chat slash commands | [plan](docs/plans/2026-03-03-chat-commands.md) | High | Planned |
-| 4 | Configuration file | [plan](docs/plans/2026-03-03-configuration-file.md) | High | Planned |
-| 5 | Session persistence | [plan](docs/plans/2026-03-03-session-persistence.md) | Medium | Planned |
-| 6 | Context compaction | [plan](docs/plans/2026-03-03-context-compaction.md) | Medium | Planned |
-| 7 | WebSocket gateway | [plan](docs/plans/2026-03-03-websocket-gateway.md) | Medium | Planned |
-| 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Planned |
+| 1 | Tool parameter schemas | [plan](docs/plans/2026-03-03-tool-parameter-schemas.md) | High | Done |
+| 2 | Streaming responses | [plan](docs/plans/2026-03-03-streaming-responses.md) | High | Done |
+| 3 | Chat slash commands | [plan](docs/plans/2026-03-03-chat-commands.md) | High | Done |
+| 4 | Configuration file | [plan](docs/plans/2026-03-03-configuration-file.md) | High | Done |
+| 5 | Session persistence | [plan](docs/plans/2026-03-03-session-persistence.md) | Medium | Done |
+| 6 | Context compaction | [plan](docs/plans/2026-03-03-context-compaction.md) | Medium | Done |
+| 7 | WebSocket gateway | [plan](docs/plans/2026-03-03-websocket-gateway.md) | Medium | Done |
+| 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Done |
 | 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Planned |
 | 10 | Background process management | [plan](docs/plans/2026-03-03-background-process-management.md) | Low | Planned |
 | 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Planned |
@@ -93,7 +101,7 @@ Monorepo structure:
 
 - `@safeclaw/vault` — Encrypted secrets storage
 - `@safeclaw/sandbox` — OS-level process sandboxing
-- `@safeclaw/core` — Capabilities, agent runtime, sessions, tools, skills, copilot client
+- `@safeclaw/core` — Capabilities, agent runtime, sessions, tools, skills, model providers, copilot client
 - `@safeclaw/gateway` — HTTP server with auth and rate limiting
 - `@safeclaw/cli` — Command-line interface
 - `@safeclaw/webchat` — Browser-based chat SPA
