@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: Required<
   maxToolRounds: 10,
   temperature: undefined,
   maxTokens: undefined,
+  maxContextTokens: 100_000,
   gateway: {
     host: "127.0.0.1",
     port: 18789,

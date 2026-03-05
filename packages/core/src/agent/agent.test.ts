@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./types.js";
+import type { ContextCompactor } from "./compactor.js";
 import type { CopilotClient } from "../copilot/client.js";
 import type {
   ChatCompletionResponse,
@@ -73,6 +74,10 @@ function createMocks() {
       history.push(msg);
     }),
     getHistory: vi.fn(() => [...history]),
+    setHistory: vi.fn((msgs: ChatMessage[]) => {
+      history.length = 0;
+      history.push(...msgs);
+    }),
   } as unknown as Session;
 
   const client = {
@@ -794,6 +799,69 @@ describe("Agent", () => {
       const defs = agent.getToolDefinitions();
 
       expect(defs).toEqual([]);
+    });
+  });
+
+  describe("context compaction", () => {
+    it("compacts session history when prompt_tokens exceeds threshold", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      // Return high token usage that triggers compaction
+      vi.mocked(client.chat).mockResolvedValue({
+        id: "resp-1",
+        model: "claude-sonnet-4",
+        choices: [
+          { index: 0, message: { role: "assistant", content: "Done." }, finish_reason: "stop" },
+        ],
+        usage: { prompt_tokens: 85000, completion_tokens: 100, total_tokens: 85100 },
+      });
+
+      const compactor = {
+        shouldCompact: vi.fn().mockReturnValue(true),
+        compact: vi.fn().mockResolvedValue([
+          { role: "user", content: "[Previous conversation summary]\nSummary here." },
+          { role: "user", content: "Latest message" },
+        ]),
+      } as unknown as ContextCompactor;
+
+      const agent = new Agent(makeConfig(), client, orchestrator, compactor);
+      await agent.processMessage(session, "Hello");
+
+      expect(compactor.shouldCompact).toHaveBeenCalledWith(85000);
+      expect(compactor.compact).toHaveBeenCalled();
+    });
+
+    it("does not compact when prompt_tokens is below threshold", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      vi.mocked(client.chat).mockResolvedValue(
+        makeResponse("Hello there!"),
+      );
+
+      const compactor = {
+        shouldCompact: vi.fn().mockReturnValue(false),
+        compact: vi.fn(),
+      } as unknown as ContextCompactor;
+
+      const agent = new Agent(makeConfig(), client, orchestrator, compactor);
+      await agent.processMessage(session, "Hi");
+
+      expect(compactor.shouldCompact).toHaveBeenCalledWith(10); // from makeResponse usage
+      expect(compactor.compact).not.toHaveBeenCalled();
+    });
+
+    it("works without a compactor (backward compatible)", async () => {
+      const { session, client, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+      vi.mocked(client.chat).mockResolvedValue(makeResponse("Hello!"));
+
+      // No compactor passed — should work fine
+      const agent = new Agent(makeConfig(), client, orchestrator);
+      const result = await agent.processMessage(session, "Hi");
+
+      expect(result.message).toBe("Hello!");
     });
   });
 });

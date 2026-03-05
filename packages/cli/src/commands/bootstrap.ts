@@ -20,6 +20,7 @@ import {
   AuditLog,
   SkillLoader,
   loadConfig as defaultLoadConfig,
+  ContextCompactor,
 } from "@safeclaw/core";
 import type { CopilotToken, CopilotModel } from "@safeclaw/core";
 import {
@@ -188,6 +189,12 @@ export async function bootstrapAgent(
       ? { sandbox, sandboxedTools: ["bash"] }
       : undefined,
   );
+  const compactor = new ContextCompactor({
+    client,
+    model,
+    maxContextTokens: config.maxContextTokens ?? DEFAULT_AGENT_CONFIG.maxContextTokens ?? 100_000,
+    preserveRecentMessages: 10,
+  });
   const agent = new Agent(
     {
       ...DEFAULT_AGENT_CONFIG,
@@ -200,6 +207,7 @@ export async function bootstrapAgent(
     },
     client,
     orchestrator,
+    compactor,
   );
   const sessionManager = await (async () => {
     const safeclawDir = join(homedir(), ".safeclaw");

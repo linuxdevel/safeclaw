@@ -108,4 +108,41 @@ describe("Session", () => {
 
     expect(session.getHistory()).toHaveLength(1);
   });
+
+  describe("setHistory", () => {
+    it("replaces all messages with provided array", () => {
+      const session = new Session("s1", testPeer);
+      session.addMessage({ role: "user", content: "old message" });
+      session.addMessage({ role: "assistant", content: "old reply" });
+
+      const newHistory: ChatMessage[] = [
+        { role: "user", content: "summary of old conversation" },
+        { role: "user", content: "recent message" },
+        { role: "assistant", content: "recent reply" },
+      ];
+      session.setHistory(newHistory);
+
+      const history = session.getHistory();
+      expect(history).toHaveLength(3);
+      expect(history[0]!.content).toBe("summary of old conversation");
+    });
+
+    it("defensive-copies input messages", () => {
+      const session = new Session("s1", testPeer);
+      const msgs: ChatMessage[] = [{ role: "user", content: "hello" }];
+      session.setHistory(msgs);
+
+      msgs[0]!.content = "mutated";
+      expect(session.getHistory()[0]!.content).toBe("hello");
+    });
+
+    it("updates the updatedAt timestamp", () => {
+      const session = new Session("s1", testPeer);
+      const before = session.metadata.updatedAt;
+
+      session.setHistory([{ role: "user", content: "new" }]);
+      const after = session.metadata.updatedAt;
+      expect(after.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    });
+  });
 });

@@ -14,6 +14,8 @@ export interface SafeClawConfig {
   temperature?: number | undefined;
   /** Maximum tokens in LLM response */
   maxTokens?: number | undefined;
+  /** Maximum context tokens before compaction triggers (default: 100000) */
+  maxContextTokens?: number | undefined;
   /** Gateway server settings */
   gateway?: GatewayFileConfig | undefined;
   /** Sandbox settings */

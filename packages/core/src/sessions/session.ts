@@ -56,6 +56,11 @@ export class Session {
     return this.#history.map((m) => ({ ...m }));
   }
 
+  setHistory(messages: ChatMessage[]): void {
+    this.#history = messages.map((m) => ({ ...m }));
+    this.#updatedAt = new Date();
+  }
+
   clearHistory(): void {
     this.#history = [];
     this.#updatedAt = new Date();

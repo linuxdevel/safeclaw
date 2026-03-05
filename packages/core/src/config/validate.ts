@@ -6,6 +6,7 @@ const ALLOWED_TOP_KEYS = new Set([
   "maxToolRounds",
   "temperature",
   "maxTokens",
+  "maxContextTokens",
   "gateway",
   "sandbox",
 ]);
@@ -76,6 +77,17 @@ export function validateConfig(value: unknown): SafeClawConfig {
       obj.maxTokens < 1
     ) {
       throw new Error('"maxTokens" must be a positive integer');
+    }
+  }
+
+  // maxContextTokens
+  if (obj.maxContextTokens !== undefined) {
+    if (
+      typeof obj.maxContextTokens !== "number" ||
+      !Number.isInteger(obj.maxContextTokens) ||
+      obj.maxContextTokens < 1
+    ) {
+      throw new Error('"maxContextTokens" must be a positive integer');
     }
   }
 

@@ -6,21 +6,25 @@ import type {
 } from "../copilot/types.js";
 import type { Session } from "../sessions/session.js";
 import type { ToolOrchestrator } from "../tools/orchestrator.js";
+import type { ContextCompactor } from "./compactor.js";
 import type { AgentConfig, AgentResponse, AgentStreamEvent } from "./types.js";
 
 export class Agent {
   private readonly config: AgentConfig;
   private readonly client: CopilotClient;
   private readonly orchestrator: ToolOrchestrator;
+  private readonly compactor?: ContextCompactor | undefined;
 
   constructor(
     config: AgentConfig,
     client: CopilotClient,
     orchestrator: ToolOrchestrator,
+    compactor?: ContextCompactor,
   ) {
     this.config = config;
     this.client = client;
     this.orchestrator = orchestrator;
+    this.compactor = compactor;
   }
 
   async processMessage(
@@ -55,6 +59,13 @@ export class Agent {
 
       // 3. Call client.chat()
       const response = await this.client.chat(request);
+
+      // Check if context compaction is needed
+      if (this.compactor && this.compactor.shouldCompact(response.usage.prompt_tokens)) {
+        const compacted = await this.compactor.compact(session.getHistory());
+        session.setHistory(compacted);
+      }
+
       const choice = response.choices[0];
       if (!choice) {
         throw new Error("No choices in chat completion response");

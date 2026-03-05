@@ -7,6 +7,7 @@ export interface AgentConfig {
   skillId: string;
   temperature?: number | undefined;
   maxTokens?: number | undefined;
+  maxContextTokens?: number | undefined;
 }
 
 export interface AgentResponse {
@@ -23,6 +24,7 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   skillId: "builtin",
   temperature: undefined,
   maxTokens: undefined,
+  maxContextTokens: 100_000,
 };
 
 // --- Streaming event types ---
