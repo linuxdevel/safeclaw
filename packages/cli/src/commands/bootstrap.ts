@@ -32,7 +32,7 @@ import {
   KeyringProvider as DefaultKeyringProvider,
   deriveKeyFromPassphrase as defaultDeriveKey,
 } from "@safeclaw/vault";
-import { Sandbox, DEFAULT_POLICY } from "@safeclaw/sandbox";
+import { Sandbox, PolicyBuilder } from "@safeclaw/sandbox";
 import { readPassphrase as defaultReadPassphrase } from "../readPassphrase.js";
 
 export interface BootstrapDeps {
@@ -169,16 +169,22 @@ export async function bootstrapAgent(
   }
   const enforcer = new CapabilityEnforcer(capabilityRegistry);
 
+  // Build sandbox policy first — we extract allowed paths for bash tool validation
+  const sandboxPolicy = PolicyBuilder.forDevelopment(process.cwd());
+  const allowedCommandPaths = sandboxPolicy.filesystem.allow
+    .filter((r) => r.access === "execute" || r.access === "readwrite")
+    .map((r) => r.path);
+
   const braveApiKey = vault.get("brave_api_key");
   const processManager = new ProcessManager();
   const toolRegistry = new SimpleToolRegistry();
-  for (const tool of createBuiltinTools({ braveApiKey, processManager })) {
+  for (const tool of createBuiltinTools({ braveApiKey, processManager, allowedCommandPaths })) {
     toolRegistry.register(tool);
   }
 
   let sandbox: Sandbox | undefined;
   try {
-    sandbox = new Sandbox(DEFAULT_POLICY);
+    sandbox = new Sandbox(sandboxPolicy);
   } catch (err: unknown) {
     // Sandbox not supported on this system — fall back to unsandboxed
     const detail = err instanceof Error ? err.message : String(err);

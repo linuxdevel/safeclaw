@@ -71,7 +71,7 @@ vault (standalone)     sandbox (standalone)
 ### Builtin Tools
 Located in `packages/core/src/tools/builtin/`:
 - `read.ts`, `write.ts`, `edit.ts` -- File operations
-- `bash.ts` -- Shell command execution
+- `bash.ts` -- Shell command execution; `createBashTool(options?)` factory accepts `allowedCommandPaths` for advisory command validation (warns when a binary is not under an allowed directory; Landlock is the real enforcement)
 - `web-fetch.ts` -- HTTP fetching
 - `web-search.ts` -- Web search via Brave Search API (conditionally included when `brave_api_key` exists in vault)
 - `process.ts` -- Background process management (start/status/log/kill/list)
@@ -84,6 +84,7 @@ Each tool declares `requiredCapabilities` and implements a `ToolHandler` interfa
 
 ### Sandbox
 - `packages/sandbox/src/sandbox.ts` -- Spawns child process with `unshare` + native helper
+- `packages/sandbox/src/policy-builder.ts` -- `PolicyBuilder` class with fluent API; `PolicyBuilder.forDevelopment(cwd, options?)` creates a development-ready policy with allowlisted system paths, compiler toolchains (JVM, GCC), an expanded ~120 syscall allowlist, and support for `extraExecutePaths`/`extraReadWritePaths` via `DevelopmentPolicyOptions`
 - `native/src/main.c` -- C helper binary that applies: Landlock filesystem rules, seccomp-BPF syscall filtering, capability dropping, `PR_SET_NO_NEW_PRIVS`
 - Policy sent to helper via fd 3 as JSON
 

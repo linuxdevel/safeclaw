@@ -7,11 +7,23 @@ import {
   SessionManager,
 } from "@safeclaw/core";
 const MockSandbox = vi.fn();
+const mockForDevelopment = vi.fn().mockReturnValue({
+  filesystem: {
+    allow: [
+      { path: "/bin", access: "execute" },
+      { path: "/usr/bin", access: "execute" },
+    ],
+    deny: [],
+  },
+  syscalls: { allow: ["read", "write"], defaultDeny: true },
+  network: "none",
+  namespaces: { pid: true, net: true, mnt: true, user: true },
+  timeoutMs: 30_000,
+});
 vi.mock("@safeclaw/sandbox", () => ({
   Sandbox: MockSandbox,
-  DEFAULT_POLICY: {
-    namespaces: { pid: true, net: true, mnt: true, user: true },
-    timeoutMs: 30_000,
+  PolicyBuilder: {
+    forDevelopment: mockForDevelopment,
   },
 }));
 
@@ -72,6 +84,20 @@ function createMockDeps(
 describe("bootstrapAgent", () => {
   beforeEach(() => {
     MockSandbox.mockReset();
+    mockForDevelopment.mockClear();
+    mockForDevelopment.mockReturnValue({
+      filesystem: {
+        allow: [
+          { path: "/bin", access: "execute" },
+          { path: "/usr/bin", access: "execute" },
+        ],
+        deny: [],
+      },
+      syscalls: { allow: ["read", "write"], defaultDeny: true },
+      network: "none",
+      namespaces: { pid: true, net: true, mnt: true, user: true },
+      timeoutMs: 30_000,
+    });
   });
 
   it("returns agent and sessionManager when vault exists with passphrase key", async () => {
@@ -253,15 +279,15 @@ describe("bootstrapAgent", () => {
     );
   });
 
-  it("constructs Sandbox with DEFAULT_POLICY", async () => {
+  it("constructs Sandbox with PolicyBuilder.forDevelopment()", async () => {
     const deps = createMockDeps();
 
     await bootstrapAgent(deps);
 
-    expect(MockSandbox).toHaveBeenCalledWith({
-      namespaces: { pid: true, net: true, mnt: true, user: true },
-      timeoutMs: 30_000,
-    });
+    expect(mockForDevelopment).toHaveBeenCalledWith(process.cwd());
+    expect(MockSandbox).toHaveBeenCalledWith(
+      mockForDevelopment.mock.results[0]!.value,
+    );
   });
 
   it("falls back gracefully when Sandbox constructor throws", async () => {

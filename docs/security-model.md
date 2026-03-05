@@ -19,7 +19,9 @@ Landlock (kernel >= 5.13) restricts filesystem access at the kernel level. The s
 
 ### seccomp-BPF
 
-seccomp-BPF filters system calls. The default policy uses `defaultDeny: true` and allows only a minimal set of syscalls required for basic process operation:
+seccomp-BPF filters system calls. All policies use `defaultDeny: true` and allow only explicitly listed syscalls. Any syscall not in the allow list is blocked.
+
+**DEFAULT_POLICY** allows a minimal set for basic process operation (~28 syscalls):
 
 ```
 read, write, exit, exit_group, brk, mmap, close, fstat, mprotect,
@@ -28,7 +30,20 @@ execve, wait4, uname, fcntl, getcwd, arch_prctl, set_tid_address,
 set_robust_list, rseq, prlimit64, getrandom
 ```
 
-Any syscall not in the allow list is blocked.
+**Development policy** (`PolicyBuilder.forDevelopment()`) expands this to ~120 syscalls organized by category:
+
+- **Core I/O**: read, write, open, openat, close, lseek, pread64, pwrite64, readv, writev, sendfile
+- **Memory**: mmap, mprotect, munmap, brk, mremap, madvise, msync
+- **File metadata**: stat, fstat, lstat, newfstatat, fstatfs, statfs, statx
+- **Directory**: getdents64, mkdir, rmdir, chdir, fchdir, getcwd
+- **File operations**: rename, renameat2, unlink, unlinkat, link, linkat, symlink, symlinkat, readlink, readlinkat
+- **File descriptors**: dup, dup2, dup3, fcntl, pipe, pipe2, eventfd2, epoll_create1, epoll_ctl, epoll_wait, epoll_pwait, select, pselect6, poll, ppoll
+- **Permissions**: chmod, fchmod, fchmodat, chown, fchown, access, faccessat, faccessat2, umask
+- **Process**: fork, vfork, clone, clone3, execve, execveat, wait4, waitid, exit, exit_group, getpid, getppid, gettid, getuid, getgid, geteuid, getegid, getgroups, setsid, setpgid, getpgid, getpgrp
+- **Signals**: rt_sigaction, rt_sigprocmask, rt_sigreturn, kill, tgkill, rt_sigsuspend, sigaltstack
+- **Time/clock**: clock_gettime, clock_getres, gettimeofday, nanosleep, clock_nanosleep, timer_create, timer_settime, timer_delete, timerfd_create, timerfd_settime, timerfd_gettime
+- **Networking**: socket, connect, bind, listen, accept, accept4, recvfrom, sendto, recvmsg, sendmsg, shutdown, setsockopt, getsockopt, getpeername, getsockname, socketpair
+- **Misc**: ioctl, prctl, arch_prctl, set_tid_address, set_robust_list, futex, sched_yield, sched_getaffinity, uname, prlimit64, getrandom, rseq, memfd_create, copy_file_range, fadvise64, fallocate, ftruncate, truncate, mlock, munlock, mincore
 
 ### Linux namespaces
 
@@ -56,6 +71,24 @@ const DEFAULT_POLICY: SandboxPolicy = {
 ```
 
 Skills that need filesystem or network access must declare capabilities, and those capabilities must be granted before the tool orchestrator will allow execution.
+
+### Development policy (PolicyBuilder)
+
+For practical software development, `PolicyBuilder.forDevelopment(cwd)` creates a policy that allows compilers, package managers, and standard dev tools to run while maintaining security:
+
+```typescript
+const policy = PolicyBuilder.forDevelopment(process.cwd());
+const sandbox = new Sandbox(policy);
+```
+
+The development policy grants:
+- **Execute access**: `/usr/bin`, `/usr/local/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/lib/jvm`, `/usr/lib/gcc`, `/usr/libexec`, plus the Node.js install prefix
+- **Read access**: `/usr/include`, `/usr/share`, shared library paths (`/lib`, `/usr/lib`, `/lib64`, `/usr/lib64`), `/etc`, `/proc`, `/dev/null`, `/dev/urandom`, `/dev/zero`, `/dev/random`
+- **Read-write access**: CWD, `/tmp`, `~/.safeclaw`
+- **Extra paths**: `DevelopmentPolicyOptions` supports `extraExecutePaths` (e.g., `~/.cargo/bin`, `~/.rustup`) and `extraReadWritePaths` for user-local toolchains
+- **Expanded syscalls**: ~120 syscalls (see seccomp-BPF section above)
+- **Network**: `"none"` (unchanged from default)
+- **Namespaces**: all enabled (PID, net, mount, user)
 
 For a detailed explanation of enforcement layers, the helper binary architecture, policy format, and security guarantees, see [Sandboxing Deep Dive](sandboxing.md).
 
