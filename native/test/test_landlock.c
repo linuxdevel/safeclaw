@@ -249,6 +249,64 @@ static void test_landlock_empty_policy(void)
     }
 }
 
+/* ── test: non-existent path is skipped ─────────────────────────────── */
+
+static void test_landlock_nonexistent_path(void)
+{
+    fprintf(stderr, "\ntest_landlock_nonexistent_path:\n");
+
+    if (!landlock_available()) {
+        SKIP("landlock not available");
+        return;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        ASSERT(0, "fork failed");
+        return;
+    }
+
+    if (pid == 0) {
+        /* Child: apply landlock with a mix of real and non-existent paths.
+         * Non-existent paths should be skipped silently, and the real
+         * paths should still work. */
+        prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+
+        Policy p;
+        init_policy(&p);
+        add_allow(&p, "/nonexistent/path/that/does/not/exist", ACCESS_READ);
+        add_allow(&p, "/tmp", ACCESS_READWRITE);
+        add_allow(&p, "/also/nonexistent/lib64", ACCESS_EXECUTE);
+
+        int rc = apply_landlock(&p);
+        if (rc != 0) {
+            _exit(99); /* landlock setup failed — this is what we're testing */
+        }
+
+        /* /tmp should still be accessible despite non-existent paths */
+        int fd = open("/tmp", O_RDONLY | O_DIRECTORY);
+        if (fd >= 0) {
+            close(fd);
+            _exit(0); /* success: non-existent paths skipped, real path works */
+        }
+        _exit(1); /* unexpected: /tmp not accessible */
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 99) {
+        ASSERT(0, "apply_landlock should skip non-existent paths, not fail");
+        return;
+    }
+
+    ASSERT(WIFEXITED(status), "child exited normally");
+    if (WIFEXITED(status)) {
+        ASSERT(WEXITSTATUS(status) == 0,
+               "non-existent paths skipped, real path still works");
+    }
+}
+
 /* ── main ──────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -259,6 +317,7 @@ int main(void)
     test_landlock_restricts();
     test_landlock_allows();
     test_landlock_empty_policy();
+    test_landlock_nonexistent_path();
 
     fprintf(stderr, "\n%d/%d passed, %d skipped\n",
             tests_passed, tests_run, tests_skipped);

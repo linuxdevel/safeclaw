@@ -193,6 +193,12 @@ int apply_landlock(const Policy *policy)
 
         int path_fd = open(rule->path, O_PATH | O_CLOEXEC);
         if (path_fd < 0) {
+            if (errno == ENOENT) {
+                /* Path doesn't exist on this system — skip silently.
+                 * The policy may list paths like /usr/local/lib64 that
+                 * only exist on some distributions. */
+                continue;
+            }
             ERR("cannot open path '%s': %s", rule->path, strerror(errno));
             close(ruleset_fd);
             return -1;
