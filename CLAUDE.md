@@ -21,6 +21,7 @@ make -C native    # Build native C helper (requires musl-tools)
 - **No `any`**: Use `unknown` and narrow with type guards.
 - **No `==`**: Always use `===` (enforced by oxlint `eqeqeq: error`).
 - **No `console.log`**: Use structured logging or remove before commit (oxlint `no-console: warn`).
+- **Zero lint diagnostics**: All lint errors and warnings must be fixed before considering work complete. The GitHub CI workflow runs `pnpm lint` and will fail the build on any lint diagnostic. Never leave lint warnings as "pre-existing" or "to be ignored" -- fix them immediately.
 
 ### File Organization
 - Source in `packages/<name>/src/`

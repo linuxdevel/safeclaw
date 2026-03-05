@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AnthropicProvider } from "./anthropic.js";
-import type {
-  ChatCompletionRequest,
-  ChatCompletionResponse,
-  StreamChunk,
-} from "../copilot/types.js";
+import type { StreamChunk } from "../copilot/types.js";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 

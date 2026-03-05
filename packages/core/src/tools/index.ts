@@ -13,6 +13,7 @@ export {
   editTool,
   bashTool,
   webFetchTool,
+  applyPatchTool,
   createWebSearchTool,
   createProcessTool,
 } from "./builtin/index.js";

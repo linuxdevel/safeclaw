@@ -34,11 +34,11 @@
 │                      │                                         │
 │         ┌────────────┼────────────┐                            │
 │         ▼            ▼            ▼                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐      │
-│  │  read    │ │  bash    │ │ web_fetch│ │web_search │ │  process  │      │
-│  │  write   │ │          │ │          │ │(optional) │ │           │      │
-│  │  edit    │ │          │ │          │ │           │ │           │      │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘ └───────────┘      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐ ┌─────────────┐ │
+│  │  read    │ │  bash    │ │ web_fetch│ │web_search │ │  process  │ │ apply_patch │ │
+│  │  write   │ │          │ │          │ │(optional) │ │           │ │             │ │
+│  │  edit    │ │          │ │          │ │           │ │           │ │             │ │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────┘ └───────────┘ └─────────────┘ │
 │                      │                                         │
 │                      ▼                                         │
 │              ┌────────────────┐                                │
@@ -113,8 +113,9 @@ Central package containing the agent runtime and security infrastructure.
 - `ToolOrchestrator`: capability-gated tool execution
 - `SimpleToolRegistry`: in-memory tool handler storage
 - `AuditLog`: records tool executions (request + result + timestamp)
-- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, `process` (plus optional `web_search` when `brave_api_key` is in vault)
+- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, `apply_patch`, `process` (plus optional `web_search` when `brave_api_key` is in vault)
 - `ProcessManager`: tracks spawned child processes by UUID with ring buffer output capture (1MB max per process), automatic cleanup after 1 hour, and maximum 8 concurrent processes
+- `PatchParser` / `PatchApplier`: unified diff parser and hunk applier with fuzzy line-offset matching; used by the `apply_patch` tool for atomic multi-file patching
 
 **Channels** (`channels/`):
 - `ChannelAdapter` interface: `connect`, `disconnect`, `onMessage`, `send`
@@ -145,6 +146,7 @@ Command-line interface adapter.
 - `runOnboarding`: five-step onboarding wizard (kernel check, auth, vault, signing key, model selection)
 - `setupChat`: wires the CLI adapter to the agent
 - `runAudit`: generates security audit reports (text or JSON)
+- `runDoctor`: runs 12 diagnostic checks across system, security, config, and connectivity categories
 
 Dependencies: `@safeclaw/core`, `@safeclaw/gateway`, `@safeclaw/sandbox`, `@safeclaw/vault`.
 
@@ -205,7 +207,7 @@ Agent (response handling)
   │     │ 4. Record in AuditLog
   │     │
   │     ▼
-  │   Tool Handler (read/write/edit/bash/web_fetch/web_search/process)
+  │   Tool Handler (read/write/edit/bash/web_fetch/web_search/process/apply_patch)
   │     │ Executes the operation
   │     │ Returns result string
   │     │

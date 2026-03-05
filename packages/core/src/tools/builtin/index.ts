@@ -7,8 +7,9 @@ import { bashTool } from "./bash.js";
 import { webFetchTool } from "./web-fetch.js";
 import { createWebSearchTool } from "./web-search.js";
 import { createProcessTool } from "./process.js";
+import { applyPatchTool } from "./apply-patch.js";
 
-export { readTool, writeTool, editTool, bashTool, webFetchTool };
+export { readTool, writeTool, editTool, bashTool, webFetchTool, applyPatchTool };
 export { createWebSearchTool } from "./web-search.js";
 export { createProcessTool } from "./process.js";
 
@@ -19,7 +20,7 @@ export interface BuiltinToolsOptions {
 
 /** Creates an array of all built-in tool handlers. */
 export function createBuiltinTools(options?: BuiltinToolsOptions): ToolHandler[] {
-  const tools: ToolHandler[] = [readTool, writeTool, editTool, bashTool, webFetchTool];
+  const tools: ToolHandler[] = [readTool, writeTool, editTool, bashTool, webFetchTool, applyPatchTool];
 
   if (options?.braveApiKey) {
     tools.push(createWebSearchTool(options.braveApiKey));

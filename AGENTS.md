@@ -75,6 +75,7 @@ Located in `packages/core/src/tools/builtin/`:
 - `web-fetch.ts` -- HTTP fetching
 - `web-search.ts` -- Web search via Brave Search API (conditionally included when `brave_api_key` exists in vault)
 - `process.ts` -- Background process management (start/status/log/kill/list)
+- `apply-patch.ts` -- Multi-file unified diff patching with atomic writes and fuzzy matching (parser in `patch-parser.ts`, applier in `patch-applier.ts`)
 
 Each tool declares `requiredCapabilities` and implements a `ToolHandler` interface.
 
@@ -115,7 +116,7 @@ Bootstrap flow (`packages/cli/src/commands/bootstrap.ts`):
 7. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
 8. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
 
-CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `help`, `version`
+CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `doctor`, `help`, `version`
 
 ## Technology Stack
 
@@ -183,6 +184,8 @@ The user will review and run the command themselves. Do not run `git add`, `git 
 - **Exports**: Each package has `src/index.ts` barrel file re-exporting public API
 - **No classes for data**: Use TypeScript interfaces/types for data shapes, classes for stateful components
 - **Security principle**: Zero-trust, mandatory enforcement, no opt-out
+- **Documentation updates**: Whenever a feature is added, modified, or removed, update all relevant documentation files (README.md, AGENTS.md, docs/architecture.md, docs/getting-started.md, etc.) in the same changeset. Never leave documentation out of sync with the implementation.
+- **Lint errors**: All lint errors and warnings must be fixed before considering work complete. The GitHub CI workflow runs `pnpm lint` and will fail the build on any lint diagnostic. Never leave lint warnings as "pre-existing" or "to be ignored" -- fix them immediately.
 
 ## Important Files to Read First
 

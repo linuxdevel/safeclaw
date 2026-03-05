@@ -170,7 +170,7 @@ The prompt is `> `. Type your message after the prompt:
 > What files are in the current directory?
 ```
 
-The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, and `process`. If a `brave_api_key` is stored in the vault, the `web_search` tool is also available. The `process` tool manages background processes (start, status, log, kill, list) with automatic cleanup after 1 hour and a maximum of 8 concurrent processes. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
+The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, `apply_patch`, and `process`. If a `brave_api_key` is stored in the vault, the `web_search` tool is also available. The `apply_patch` tool applies unified diff patches to one or more files atomically with fuzzy line matching. The `process` tool manages background processes (start, status, log, kill, list) with automatic cleanup after 1 hour and a maximum of 8 concurrent processes. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
 
 ## Starting the WebChat UI
 
@@ -200,6 +200,22 @@ The audit report shows:
 - Installed skills and their granted capabilities
 - Active sessions
 - Recent tool executions (success/failure, duration, sandboxed status)
+
+## Doctor command
+
+Run diagnostic checks to verify your SafeClaw installation:
+
+```bash
+safeclaw doctor
+```
+
+The doctor command runs 12 checks across four categories:
+- **System**: Node.js version, native helper binary, disk space
+- **Security**: Landlock, seccomp, namespace support
+- **Config**: vault accessibility, signing key, default model
+- **Connectivity**: GitHub Copilot API reachability
+
+Each check reports PASS, FAIL, or WARN with a description. The command exits with code 1 if any check fails. The `/doctor` chat command is also available during interactive sessions.
 
 ## Configuration overview
 

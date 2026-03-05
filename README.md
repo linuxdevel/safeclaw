@@ -26,8 +26,9 @@ After install, run `safeclaw onboard` for first-time setup.
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
 - Multi-provider LLM support: GitHub Copilot, OpenAI, and Anthropic (Claude Sonnet 4 default)
 - Interactive CLI and browser-based WebChat channels
-- Built-in tools: file read/write/edit, bash execution, web fetch, web search, background process management — all capability-gated
+- Built-in tools: file read/write/edit, bash execution, web fetch, web search, background process management, multi-file patch application — all capability-gated
 - 5-step onboarding wizard with kernel capability detection
+- `safeclaw doctor` diagnostic command with 12 checks across system, security, config, and connectivity
 - Security audit CLI for inspecting skills, sessions, and tool executions
 - HTTP gateway with token auth and rate limiting
 
@@ -44,6 +45,8 @@ After install, run `safeclaw onboard` for first-time setup.
 | Built-in tools (read, write, edit, bash, web\_fetch) | Done | All declare required capabilities |
 | Web search tool (web\_search) | Done | Brave Search API; conditionally included when `brave_api_key` is in vault |
 | Background process management (`process`) | Done | Start/status/log/kill/list subcommands; max 8 concurrent, 1MB ring buffer, 1h auto-cleanup |
+| Multi-file patch tool (`apply_patch`) | Done | Unified diff parsing, fuzzy hunk matching, atomic multi-file writes |
+| Doctor command (`safeclaw doctor`) | Done | 12 diagnostic checks across 4 categories; also available as `/doctor` chat command |
 | CLI channel (interactive chat) | Done | readline-based with passphrase masking |
 | WebChat SPA | Done | Dark theme, localStorage auth config |
 | HTTP gateway with auth and rate limiting | Done | Token-based, timing-safe comparison |
@@ -59,7 +62,7 @@ After install, run `safeclaw onboard` for first-time setup.
 | Runtime capability gating in agent bootstrap | Done | Loads builtin manifest; grants only declared capabilities |
 | Tool parameter schemas (JSON Schema) | Done | All builtin tools declare parameter schemas |
 | Streaming responses | Done | SSE-based streaming in agent loop and channels |
-| Chat slash commands | Done | /help, /model, /clear, /compact, /session, /sessions, /export |
+| Chat slash commands | Done | /help, /model, /clear, /compact, /session, /sessions, /export, /doctor |
 | Configuration file (safeclaw.json) | Done | Model, prompt, tool rounds, gateway, sandbox settings |
 | Session persistence (FileSessionStore) | Done | Sessions survive restarts; file-backed store |
 | Context compaction | Done | LLM-powered conversation summarization at 80% context threshold |
@@ -82,8 +85,8 @@ Planned features with implementation plans (in priority order):
 | 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Done |
 | 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Done |
 | 10 | Background process management | [plan](docs/plans/2026-03-03-background-process-management.md) | Low | Done |
-| 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Planned |
-| 12 | Multi-file patch tool | [plan](docs/plans/2026-03-03-multi-file-patch-tool.md) | Low | Planned |
+| 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Done |
+| 12 | Multi-file patch tool | [plan](docs/plans/2026-03-03-multi-file-patch-tool.md) | Low | Done |
 
 ## CLI Commands
 
@@ -94,6 +97,7 @@ Planned features with implementation plans (in priority order):
 | `safeclaw serve` | Start gateway + webchat server |
 | `safeclaw audit` | Security audit report |
 | `safeclaw audit --json` | Audit report in JSON format |
+| `safeclaw doctor` | System diagnostic checks |
 | `safeclaw help` | Show usage information |
 | `safeclaw version` | Show version |
 
