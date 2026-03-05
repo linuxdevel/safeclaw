@@ -170,7 +170,7 @@ The prompt is `> `. Type your message after the prompt:
 > What files are in the current directory?
 ```
 
-The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, and `web_fetch`. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
+The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, and `web_fetch`. If a `brave_api_key` is stored in the vault, the `web_search` tool is also available. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
 
 ## Starting the WebChat UI
 
@@ -213,5 +213,6 @@ SafeClaw stores configuration and secrets in the encrypted vault. Key vault entr
 | `provider` | Default LLM provider (`copilot`, `openai`, or `anthropic`) |
 | `openai_api_key` | OpenAI API key (optional) |
 | `anthropic_api_key` | Anthropic API key (optional) |
+| `brave_api_key` | Brave Search API key for web\_search tool (optional) |
 
 The gateway binds to `127.0.0.1:18789` by default with a rate limit of 60 requests per 60-second window. The auth token must be at least 32 characters. See [Security Model](security-model.md) for details.

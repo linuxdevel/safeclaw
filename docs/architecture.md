@@ -34,11 +34,11 @@
 │                      │                                         │
 │         ┌────────────┼────────────┐                            │
 │         ▼            ▼            ▼                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
-│  │  read    │ │  bash    │ │ web_fetch│  Built-in tools        │
-│  │  write   │ │          │ │          │                        │
-│  │  edit    │ │          │ │          │                        │
-│  └──────────┘ └──────────┘ └──────────┘                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐              │
+│  │  read    │ │  bash    │ │ web_fetch│ │web_search │  Built-in   │
+│  │  write   │ │          │ │          │ │(optional) │  tools      │
+│  │  edit    │ │          │ │          │ │           │              │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────┘              │
 │                      │                                         │
 │                      ▼                                         │
 │              ┌────────────────┐                                │
@@ -113,7 +113,7 @@ Central package containing the agent runtime and security infrastructure.
 - `ToolOrchestrator`: capability-gated tool execution
 - `SimpleToolRegistry`: in-memory tool handler storage
 - `AuditLog`: records tool executions (request + result + timestamp)
-- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`
+- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch` (plus optional `web_search` when `brave_api_key` is in vault)
 
 **Channels** (`channels/`):
 - `ChannelAdapter` interface: `connect`, `disconnect`, `onMessage`, `send`
@@ -204,7 +204,7 @@ Agent (response handling)
   │     │ 4. Record in AuditLog
   │     │
   │     ▼
-  │   Tool Handler (read/write/edit/bash/web_fetch)
+  │   Tool Handler (read/write/edit/bash/web_fetch/web_search)
   │     │ Executes the operation
   │     │ Returns result string
   │     │

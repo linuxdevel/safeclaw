@@ -73,6 +73,7 @@ Located in `packages/core/src/tools/builtin/`:
 - `read.ts`, `write.ts`, `edit.ts` -- File operations
 - `bash.ts` -- Shell command execution
 - `web-fetch.ts` -- HTTP fetching
+- `web-search.ts` -- Web search via Brave Search API (conditionally included when `brave_api_key` exists in vault)
 
 Each tool declares `requiredCapabilities` and implements a `ToolHandler` interface.
 
@@ -105,8 +106,9 @@ Bootstrap flow (`packages/cli/src/commands/bootstrap.ts`):
 2. Read provider config from vault (`provider` key, defaults to `"copilot"`)
 3. Create appropriate `ModelProvider` (CopilotProvider, OpenAIProvider, or AnthropicProvider)
 4. Load builtin skill manifest
-5. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
-6. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
+5. Read `brave_api_key` from vault; if present, include web_search tool in tool registry
+6. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
+7. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
 
 CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `help`, `version`
 

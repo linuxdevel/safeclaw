@@ -168,8 +168,9 @@ export async function bootstrapAgent(
   }
   const enforcer = new CapabilityEnforcer(capabilityRegistry);
 
+  const braveApiKey = vault.get("brave_api_key");
   const toolRegistry = new SimpleToolRegistry();
-  for (const tool of createBuiltinTools()) {
+  for (const tool of createBuiltinTools({ braveApiKey })) {
     toolRegistry.register(tool);
   }
 

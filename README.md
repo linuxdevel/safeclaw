@@ -26,7 +26,7 @@ After install, run `safeclaw onboard` for first-time setup.
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
 - Multi-provider LLM support: GitHub Copilot, OpenAI, and Anthropic (Claude Sonnet 4 default)
 - Interactive CLI and browser-based WebChat channels
-- Built-in tools: file read/write/edit, bash execution, web fetch — all capability-gated
+- Built-in tools: file read/write/edit, bash execution, web fetch, web search — all capability-gated
 - 5-step onboarding wizard with kernel capability detection
 - Security audit CLI for inspecting skills, sessions, and tool executions
 - HTTP gateway with token auth and rate limiting
@@ -42,6 +42,7 @@ After install, run `safeclaw onboard` for first-time setup.
 | Dynamic model discovery | Done | Fetches available models during onboarding |
 | Agent loop with tool calling | Done | Multi-round tool execution |
 | Built-in tools (read, write, edit, bash, web\_fetch) | Done | All declare required capabilities |
+| Web search tool (web\_search) | Done | Brave Search API; conditionally included when `brave_api_key` is in vault |
 | CLI channel (interactive chat) | Done | readline-based with passphrase masking |
 | WebChat SPA | Done | Dark theme, localStorage auth config |
 | HTTP gateway with auth and rate limiting | Done | Token-based, timing-safe comparison |
@@ -78,7 +79,7 @@ Planned features with implementation plans (in priority order):
 | 6 | Context compaction | [plan](docs/plans/2026-03-03-context-compaction.md) | Medium | Done |
 | 7 | WebSocket gateway | [plan](docs/plans/2026-03-03-websocket-gateway.md) | Medium | Done |
 | 8 | Multi-model support | [plan](docs/plans/2026-03-03-multi-model-support.md) | Medium | Done |
-| 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Planned |
+| 9 | Web search tool | [plan](docs/plans/2026-03-03-web-search-tool.md) | Low | Done |
 | 10 | Background process management | [plan](docs/plans/2026-03-03-background-process-management.md) | Low | Planned |
 | 11 | Doctor command | [plan](docs/plans/2026-03-03-doctor-command.md) | Low | Planned |
 | 12 | Multi-file patch tool | [plan](docs/plans/2026-03-03-multi-file-patch-tool.md) | Low | Planned |

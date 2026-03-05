@@ -13,6 +13,8 @@ export {
   editTool,
   bashTool,
   webFetchTool,
+  createWebSearchTool,
 } from "./builtin/index.js";
+export type { BuiltinToolsOptions } from "./builtin/index.js";
 export { AuditLog } from "./audit-log.js";
 export type { AuditEntry } from "./audit-log.js";
