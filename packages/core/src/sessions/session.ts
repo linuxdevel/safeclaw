@@ -4,7 +4,7 @@ import type { PeerIdentity, SessionMetadata, SessionData } from "./types.js";
 export class Session {
   readonly #id: string;
   readonly #peer: PeerIdentity;
-  readonly #createdAt: Date;
+  #createdAt: Date;
   #updatedAt: Date;
   #history: ChatMessage[] = [];
 
@@ -14,6 +14,19 @@ export class Session {
     const now = new Date();
     this.#createdAt = now;
     this.#updatedAt = now;
+  }
+
+  /**
+   * Reconstruct a session from persisted data.
+   */
+  static fromData(data: SessionData): Session {
+    const session = new Session(data.metadata.id, data.metadata.peer);
+    session.#createdAt = new Date(data.metadata.createdAt);
+    session.#updatedAt = new Date(data.metadata.updatedAt);
+    for (const msg of data.history) {
+      session.#history.push({ ...msg });
+    }
+    return session;
   }
 
   get id(): string {

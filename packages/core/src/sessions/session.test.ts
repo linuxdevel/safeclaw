@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Session } from "./session.js";
-import type { PeerIdentity } from "./types.js";
+import type { PeerIdentity, SessionData } from "./types.js";
 import type { ChatMessage } from "../copilot/types.js";
 
 const testPeer: PeerIdentity = {
@@ -63,5 +63,49 @@ describe("Session", () => {
     session.addMessage(makeMessage("hello"));
     const after = session.metadata.updatedAt.getTime();
     expect(after).toBeGreaterThan(before);
+  });
+
+  it("fromData reconstructs a session from persisted data", () => {
+    const data: SessionData = {
+      metadata: {
+        id: "restored-1",
+        peer: { channelId: "ch-1", peerId: "p-1" },
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:05:00Z"),
+        messageCount: 2,
+      },
+      history: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "hi" },
+      ],
+    };
+
+    const session = Session.fromData(data);
+
+    expect(session.id).toBe("restored-1");
+    expect(session.peer).toEqual({ channelId: "ch-1", peerId: "p-1" });
+    expect(session.metadata.createdAt.toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    expect(session.metadata.updatedAt.toISOString()).toBe("2026-01-01T00:05:00.000Z");
+    expect(session.getHistory()).toHaveLength(2);
+    expect(session.metadata.messageCount).toBe(2);
+  });
+
+  it("fromData produces independent copy (mutating input does not affect session)", () => {
+    const history = [{ role: "user" as const, content: "hello" }];
+    const data: SessionData = {
+      metadata: {
+        id: "restored-2",
+        peer: { channelId: "ch-1", peerId: "p-1" },
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:05:00Z"),
+        messageCount: 1,
+      },
+      history,
+    };
+
+    const session = Session.fromData(data);
+    history.push({ role: "user", content: "injected" });
+
+    expect(session.getHistory()).toHaveLength(1);
   });
 });

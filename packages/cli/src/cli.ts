@@ -56,7 +56,7 @@ async function runChat(): Promise<void> {
   });
 
   const adapter = new CliAdapter(process.stdin, process.stdout);
-  const session = sessionManager.create({
+  const session = sessionManager.getOrCreate({
     channelId: "cli",
     peerId: "local",
   });
@@ -134,6 +134,7 @@ async function runServe(): Promise<void> {
     const peer = { channelId: "gateway", peerId: "api-client" };
     const session = sessionManager.getOrCreate(peer);
     const response = await agent.processMessage(session, String(msg.payload));
+    await sessionManager.save(session.id);
     return { type: "response" as const, payload: response.message };
   });
 
@@ -141,6 +142,7 @@ async function runServe(): Promise<void> {
   webchat.onMessage(async (msg) => {
     const session = sessionManager.getOrCreate(msg.peer);
     const response = await agent.processMessage(session, msg.content);
+    await sessionManager.save(session.id);
     return { content: response.message };
   });
 

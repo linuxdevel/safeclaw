@@ -1,15 +1,17 @@
 import { fileURLToPath } from "node:url";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import {
   existsSync as defaultExistsSync,
   readFileSync as defaultReadFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import {
   Agent,
   DEFAULT_AGENT_CONFIG,
   CopilotClient,
   getCopilotToken as defaultGetCopilotToken,
   SessionManager,
+  FileSessionStore,
   CapabilityRegistry,
   CapabilityEnforcer,
   SimpleToolRegistry,
@@ -199,7 +201,13 @@ export async function bootstrapAgent(
     client,
     orchestrator,
   );
-  const sessionManager = new SessionManager();
+  const sessionManager = await (async () => {
+    const safeclawDir = join(homedir(), ".safeclaw");
+    const store = new FileSessionStore(safeclawDir);
+    const sm = new SessionManager(store);
+    await sm.loadAll();
+    return sm;
+  })();
   const auditLog = new AuditLog();
 
   return { agent, sessionManager, capabilityRegistry, auditLog };

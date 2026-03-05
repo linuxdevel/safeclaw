@@ -33,6 +33,9 @@ export function setupChat(
     }
 
     const response = await agent.processMessage(session, msg.content);
+    if (options?.sessionManager) {
+      await options.sessionManager.save(session.id);
+    }
     return { content: response.message };
   });
 }

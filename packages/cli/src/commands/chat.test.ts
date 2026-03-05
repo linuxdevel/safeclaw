@@ -33,6 +33,7 @@ function makeTestDeps() {
   const sessionManager = {
     activeCount: 1,
     listSessions: vi.fn().mockReturnValue([]),
+    save: vi.fn().mockResolvedValue(undefined),
   } as unknown as SessionManager;
 
   return { input, output, adapter, agent, session, sessionManager };
