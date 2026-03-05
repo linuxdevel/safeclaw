@@ -1,15 +1,37 @@
-import type { Agent, Session, OutboundMessage } from "@safeclaw/core";
+import type { Agent, Session, SessionManager, OutboundMessage } from "@safeclaw/core";
 import type { CliAdapter } from "../adapter.js";
+import { ChatCommandHandler } from "./chat-commands.js";
+
+export interface SetupChatOptions {
+  sessionManager: SessionManager;
+  model: string;
+}
 
 /**
  * Wire the CLI adapter to the agent for interactive chat (non-streaming).
+ * When options are provided, slash commands are intercepted and handled locally.
  */
 export function setupChat(
   adapter: CliAdapter,
   agent: Agent,
   session: Session,
+  options?: SetupChatOptions,
 ): void {
+  const commandHandler = options
+    ? new ChatCommandHandler({
+        session,
+        sessionManager: options.sessionManager,
+        agent,
+        model: options.model,
+      })
+    : null;
+
   adapter.onMessage(async (msg) => {
+    if (commandHandler?.isCommand(msg.content)) {
+      const result = await commandHandler.execute(msg.content);
+      return { content: result };
+    }
+
     const response = await agent.processMessage(session, msg.content);
     return { content: response.message };
   });

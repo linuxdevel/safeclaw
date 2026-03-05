@@ -11,7 +11,7 @@ import { runAudit } from "./commands/audit.js";
 import { setupChat } from "./commands/chat.js";
 import { Gateway, DEFAULT_GATEWAY_CONFIG } from "@safeclaw/gateway";
 import { WebChatAdapter } from "@safeclaw/webchat";
-import { listCopilotModels } from "@safeclaw/core";
+import { listCopilotModels, DEFAULT_AGENT_CONFIG } from "@safeclaw/core";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -61,7 +61,10 @@ async function runChat(): Promise<void> {
     peerId: "local",
   });
 
-  setupChat(adapter, agent, session);
+  setupChat(adapter, agent, session, {
+    sessionManager,
+    model: DEFAULT_AGENT_CONFIG.model,
+  });
 
   process.stdout.write("\nSafeClaw Interactive Chat\n");
   process.stdout.write(
