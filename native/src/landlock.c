@@ -130,7 +130,8 @@ static uint64_t policy_access_to_landlock(int access_level, int abi)
 
     if (access_level == ACCESS_EXECUTE) {
         rights |= LANDLOCK_ACCESS_FS_EXECUTE |
-                   LANDLOCK_ACCESS_FS_READ_FILE;
+                   LANDLOCK_ACCESS_FS_READ_FILE |
+                   LANDLOCK_ACCESS_FS_READ_DIR;
     }
 
     return rights;
