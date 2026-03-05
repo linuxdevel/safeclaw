@@ -9,7 +9,13 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@safeclaw/core": "workspace:*"
+    "@safeclaw/core": "workspace:*",
+    "ws": "^8.19.0"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
 }

@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import { validateAuthToken, verifyToken } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
+import { WebSocketHandler, type WsMessageHandler } from "./ws-handler.js";
 import type {
   GatewayConfig,
   GatewayMessage,
@@ -19,6 +20,8 @@ export class Gateway {
   private messageHandler:
     | ((msg: GatewayMessage) => Promise<GatewayResponse>)
     | null = null;
+  private wsHandler: WebSocketHandler | null = null;
+  private wsMessageHandler: WsMessageHandler | null = null;
 
   constructor(config: GatewayConfig) {
     // Validate at construction — fail-closed
@@ -33,6 +36,11 @@ export class Gateway {
   /** Set the handler for incoming messages */
   onMessage(handler: (msg: GatewayMessage) => Promise<GatewayResponse>): void {
     this.messageHandler = handler;
+  }
+
+  /** Set the handler for incoming WebSocket chat messages */
+  onWsMessage(handler: WsMessageHandler): void {
+    this.wsMessageHandler = handler;
   }
 
   /** Start the HTTP server */
@@ -56,11 +64,29 @@ export class Gateway {
     });
 
     this.server = server;
+
+    // Attach WebSocket handler to the same HTTP server
+    this.wsHandler = new WebSocketHandler({
+      server: this.server,
+      authToken: this.config.authToken,
+      rateLimiter: this.rateLimiter,
+    });
+
+    if (this.wsMessageHandler) {
+      this.wsHandler.onMessage(this.wsMessageHandler);
+    }
+
+    this.wsHandler.attach();
   }
 
   /** Stop the server */
   async stop(): Promise<void> {
     if (!this.server) return;
+
+    if (this.wsHandler) {
+      this.wsHandler.close();
+      this.wsHandler = null;
+    }
 
     const server = this.server;
     this.server = null;

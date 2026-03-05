@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import WebSocket from "ws";
 import { Gateway } from "./server.js";
 import type { GatewayConfig, GatewayResponse } from "./types.js";
+import type { WsClientMessage, WsServerMessage } from "./ws-types.js";
 
 const AUTH_TOKEN = "a]3Fk9!mP#nQ7wR$xY2zB&cD5eH8jL0v";
 
@@ -12,6 +14,62 @@ function makeConfig(overrides?: Partial<GatewayConfig>): GatewayConfig {
     rateLimit: { maxRequests: 60, windowMs: 60_000 },
     ...overrides,
   };
+}
+
+function wsSend(ws: WebSocket, msg: WsClientMessage): void {
+  ws.send(JSON.stringify(msg));
+}
+
+function wsRecv(ws: WebSocket, timeoutMs = 2000): Promise<WsServerMessage> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Timed out waiting for WS message")),
+      timeoutMs,
+    );
+    ws.once("message", (data) => {
+      clearTimeout(timer);
+      resolve(JSON.parse(String(data)) as WsServerMessage);
+    });
+  });
+}
+
+function wsOpen(ws: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+    ws.once("open", resolve);
+    ws.once("error", reject);
+  });
+}
+
+function wsRecvN(
+  ws: WebSocket,
+  count: number,
+  timeoutMs = 2000,
+): Promise<WsServerMessage[]> {
+  return new Promise((resolve, reject) => {
+    const messages: WsServerMessage[] = [];
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Timed out waiting for ${count} messages (got ${messages.length})`,
+          ),
+        ),
+      timeoutMs,
+    );
+    const onMessage = (data: WebSocket.RawData): void => {
+      messages.push(JSON.parse(String(data)) as WsServerMessage);
+      if (messages.length === count) {
+        clearTimeout(timer);
+        ws.off("message", onMessage);
+        resolve(messages);
+      }
+    };
+    ws.on("message", onMessage);
+  });
 }
 
 describe("Gateway", () => {
@@ -181,6 +239,108 @@ describe("Gateway", () => {
       const gw = new Gateway(makeConfig());
       await expect(gw.stop()).resolves.toBeUndefined();
       expect(gw.isRunning).toBe(false);
+    });
+  });
+
+  describe("WebSocket via Gateway", () => {
+    let gateway: Gateway;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      gateway = new Gateway(makeConfig());
+
+      // Set up HTTP handler (existing)
+      gateway.onMessage(async (msg) => {
+        if (msg.type === "ping") {
+          return { type: "pong", payload: null } satisfies GatewayResponse;
+        }
+        return {
+          type: "response",
+          payload: { echo: msg.payload },
+        } satisfies GatewayResponse;
+      });
+
+      // Set up WebSocket handler
+      gateway.onWsMessage(async (content, send) => {
+        send({ type: "text_delta", content: `Echo: ${content}` });
+        send({
+          type: "done",
+          response: {
+            message: `Echo: ${content}`,
+            toolCallsMade: 0,
+            model: "test",
+          },
+        });
+      });
+
+      await gateway.start();
+      const config = (gateway as unknown as { config: GatewayConfig }).config;
+      baseUrl = `ws://127.0.0.1:${String(config.port)}`;
+    });
+
+    afterAll(async () => {
+      await gateway.stop();
+    });
+
+    it("WebSocket and HTTP work on the same port", async () => {
+      // Test HTTP still works
+      const config = (gateway as unknown as { config: GatewayConfig }).config;
+      const httpRes = await fetch(
+        `http://127.0.0.1:${String(config.port)}/api/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${AUTH_TOKEN}`,
+          },
+          body: JSON.stringify({ type: "ping", payload: null }),
+        },
+      );
+      expect(httpRes.status).toBe(200);
+
+      // Test WebSocket works
+      const ws = new WebSocket(baseUrl);
+      await wsOpen(ws);
+
+      wsSend(ws, { type: "auth", token: AUTH_TOKEN });
+      const authReply = await wsRecv(ws);
+      expect(authReply.type).toBe("auth_ok");
+
+      // Set up collection BEFORE sending chat to avoid race
+      const messagesPromise = wsRecvN(ws, 2);
+
+      wsSend(ws, { type: "chat", content: "hello" });
+      const messages = await messagesPromise;
+
+      expect(messages[0]).toEqual({
+        type: "text_delta",
+        content: "Echo: hello",
+      });
+      expect(messages[1]!.type).toBe("done");
+
+      ws.close();
+    });
+
+    it("stop() cleans up WebSocket connections", async () => {
+      const gw2 = new Gateway(makeConfig());
+      gw2.onWsMessage(async (_content, send) => {
+        send({
+          type: "done",
+          response: { message: "ok", toolCallsMade: 0, model: "test" },
+        });
+      });
+      await gw2.start();
+
+      const config2 = (gw2 as unknown as { config: GatewayConfig }).config;
+      const ws = new WebSocket(`ws://127.0.0.1:${String(config2.port)}`);
+      await wsOpen(ws);
+
+      wsSend(ws, { type: "auth", token: AUTH_TOKEN });
+      await wsRecv(ws);
+
+      // Stop the gateway
+      await gw2.stop();
+      expect(gw2.isRunning).toBe(false);
     });
   });
 });

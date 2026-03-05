@@ -138,6 +138,44 @@ async function runServe(): Promise<void> {
     return { type: "response" as const, payload: response.message };
   });
 
+  // Wire WebSocket handler for streaming responses
+  gateway.onWsMessage(async (content, send) => {
+    const peer = { channelId: "gateway-ws", peerId: "ws-client" };
+    const session = sessionManager.getOrCreate(peer);
+
+    const stream = agent.processMessageStream(session, content);
+    for await (const event of stream) {
+      switch (event.type) {
+        case "text_delta":
+          send({ type: "text_delta", content: event.content });
+          break;
+        case "tool_start":
+          send({
+            type: "tool_start",
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+          });
+          break;
+        case "tool_result":
+          send({
+            type: "tool_result",
+            toolCallId: event.toolCallId,
+            result: event.result,
+            success: event.success,
+          });
+          break;
+        case "done":
+          send({ type: "done", response: event.response });
+          break;
+        case "error":
+          send({ type: "error", message: event.error });
+          break;
+      }
+    }
+
+    await sessionManager.save(session.id);
+  });
+
   // Wire webchat adapter to agent
   webchat.onMessage(async (msg) => {
     const session = sessionManager.getOrCreate(msg.peer);
@@ -152,6 +190,9 @@ async function runServe(): Promise<void> {
   process.stdout.write("\nSafeClaw server started\n");
   process.stdout.write(
     `  Gateway API:  http://${DEFAULT_GATEWAY_CONFIG.host}:${DEFAULT_GATEWAY_CONFIG.port}/api/chat\n`,
+  );
+  process.stdout.write(
+    `  WebSocket:    ws://${DEFAULT_GATEWAY_CONFIG.host}:${DEFAULT_GATEWAY_CONFIG.port}/\n`,
   );
   process.stdout.write(`  WebChat UI:   http://127.0.0.1:${webchat.port}/\n`);
   process.stdout.write(`  Auth token:   ${authToken}\n\n`);
