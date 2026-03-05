@@ -12,3 +12,5 @@ export type {
   EnforcementLayers,
 } from "./types.js";
 export { findHelper } from "./helper.js";
+export { PolicyBuilder } from "./policy-builder.js";
+export type { DevelopmentPolicyOptions } from "./policy-builder.js";

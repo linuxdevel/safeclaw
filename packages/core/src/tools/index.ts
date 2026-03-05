@@ -12,6 +12,7 @@ export {
   writeTool,
   editTool,
   bashTool,
+  createBashTool,
   webFetchTool,
   applyPatchTool,
   createWebSearchTool,

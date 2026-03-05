@@ -21,6 +21,7 @@ After install, run `safeclaw onboard` for first-time setup.
 ### Security
 
 - Zero-trust security model with mandatory OS-level sandboxing (Landlock + seccomp-BPF + Linux namespaces)
+- Development-ready sandbox policy via `PolicyBuilder.forDevelopment()` — allows compilers (GCC, JVM), package managers, and standard dev tools while enforcing kernel-level access control
 - AES-256-GCM encrypted secrets vault with OS keyring or passphrase-derived keys
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
 - Capability-based access control with path/host/executable constraints
@@ -36,6 +37,7 @@ After install, run `safeclaw onboard` for first-time setup.
 ### Tools
 
 - Built-in tools: file read/write/edit, bash execution, web fetch, web search, background process management, multi-file patch application — all capability-gated
+- Advisory command validation in bash tool warns when binaries are outside allowed paths (Landlock enforces the real boundary)
 - Web search via Brave Search API (conditionally included when API key is in vault)
 - Background process management with ring buffer output capture (1MB max, 8 concurrent, 1h auto-cleanup)
 - Multi-file patch tool with unified diff parsing, fuzzy hunk matching, and atomic writes
@@ -63,7 +65,7 @@ Planned features in implementation order:
 
 | # | Feature | Plan | Priority |
 |---|---------|------|----------|
-| 1 | Sandbox command execution & CWD permissions | [plan](docs/plans/2026-03-05-sandbox-permissions.md) | High |
+| 1 | Sandbox command execution & CWD permissions | [plan](docs/plans/2026-03-05-sandbox-permissions.md) | **Done** |
 | 2 | Automatic context compaction | [plan](docs/plans/2026-03-05-context-compaction.md) | High |
 | 3 | Streaming UX (Phase 1 — readline) | [plan](docs/plans/2026-03-05-streaming-ux.md) | High |
 | 4 | Better CLI/TUI (Ink-based) | [plan](docs/plans/2026-03-05-tui.md) | High |
@@ -89,7 +91,7 @@ Planned features in implementation order:
 Monorepo structure:
 
 - `@safeclaw/vault` — Encrypted secrets storage
-- `@safeclaw/sandbox` — OS-level process sandboxing
+- `@safeclaw/sandbox` — OS-level process sandboxing with `PolicyBuilder` for development-ready policies
 - `@safeclaw/core` — Capabilities, agent runtime, sessions, tools, skills, model providers, copilot client
 - `@safeclaw/gateway` — HTTP server with auth and rate limiting
 - `@safeclaw/cli` — Command-line interface

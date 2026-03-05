@@ -73,6 +73,7 @@ No dependencies on other SafeClaw packages.
 OS-level process isolation using Linux kernel features.
 
 - `SandboxPolicy` / `DEFAULT_POLICY`: policy types with maximally restrictive defaults
+- `PolicyBuilder`: fluent API for constructing sandbox policies; `PolicyBuilder.forDevelopment(cwd)` creates a ready-made policy for software development with allowlisted system paths, compiler toolchains, and an expanded syscall set
 - `detectKernelCapabilities`: probes `/proc` for Landlock, seccomp, namespace support
 - `assertSandboxSupported`: throws if required kernel features are missing
 - `Sandbox` class: executes commands under policy (stub in v1; types and policies are real)
@@ -114,6 +115,7 @@ Central package containing the agent runtime and security infrastructure.
 - `SimpleToolRegistry`: in-memory tool handler storage
 - `AuditLog`: records tool executions (request + result + timestamp)
 - Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, `apply_patch`, `process` (plus optional `web_search` when `brave_api_key` is in vault)
+- `createBashTool(options?)`: factory function for the bash tool; accepts `allowedCommandPaths` for advisory command validation that warns when a binary is not under an allowed directory (Landlock is the real enforcement layer)
 - `ProcessManager`: tracks spawned child processes by UUID with ring buffer output capture (1MB max per process), automatic cleanup after 1 hour, and maximum 8 concurrent processes
 - `PatchParser` / `PatchApplier`: unified diff parser and hunk applier with fuzzy line-offset matching; used by the `apply_patch` tool for atomic multi-file patching
 
