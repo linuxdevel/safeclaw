@@ -8,8 +8,11 @@ export interface SetupChatOptions {
 }
 
 /**
- * Wire the CLI adapter to the agent for interactive chat (non-streaming).
- * When options are provided, slash commands are intercepted and handled locally.
+ * Wire the CLI adapter to the agent for interactive streaming chat.
+ *
+ * Responses stream token-by-token to the terminal. Slash commands are
+ * intercepted and handled locally before reaching the agent.
+ * Sessions are persisted after each completed exchange.
  */
 export function setupChat(
   adapter: CliAdapter,
@@ -26,30 +29,16 @@ export function setupChat(
       })
     : null;
 
-  adapter.onMessage(async (msg) => {
+  adapter.onStreamMessage(async function* (msg) {
+    // Intercept slash commands — return a single non-streaming response
     if (commandHandler?.isCommand(msg.content)) {
       const result = await commandHandler.execute(msg.content);
-      return { content: result };
+      yield { content: result, stream: true } satisfies OutboundMessage;
+      yield { content: "", stream: false } satisfies OutboundMessage;
+      return;
     }
 
-    const response = await agent.processMessage(session, msg.content);
-    if (options?.sessionManager) {
-      await options.sessionManager.save(session.id);
-    }
-    return { content: response.message };
-  });
-}
-
-/**
- * Wire the CLI adapter to the agent for streaming chat.
- * Text deltas are written to the terminal as they arrive.
- */
-export function setupStreamingChat(
-  adapter: CliAdapter,
-  agent: Agent,
-  session: Session,
-): void {
-  adapter.onStreamMessage(async function* (msg) {
+    // Stream agent response token-by-token
     const stream = agent.processMessageStream(session, msg.content);
 
     for await (const event of stream) {
@@ -64,7 +53,10 @@ export function setupStreamingChat(
           // Could emit tool status in the future
           break;
         case "done":
-          // Signal end of stream
+          // Persist session after completed exchange
+          if (options?.sessionManager) {
+            await options.sessionManager.save(session.id);
+          }
           yield { content: "", stream: false } satisfies OutboundMessage;
           break;
         case "error":

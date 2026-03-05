@@ -2,7 +2,15 @@ import { describe, it, expect, vi } from "vitest";
 import { PassThrough } from "node:stream";
 import { setupChat } from "./chat.js";
 import { CliAdapter } from "../adapter.js";
-import type { Agent, Session, SessionManager } from "@safeclaw/core";
+import type { Agent, Session, SessionManager, AgentStreamEvent } from "@safeclaw/core";
+
+async function* fakeStream(
+  events: AgentStreamEvent[],
+): AsyncGenerator<AgentStreamEvent> {
+  for (const event of events) {
+    yield event;
+  }
+}
 
 function makeTestDeps() {
   const input = new PassThrough();
@@ -10,11 +18,19 @@ function makeTestDeps() {
   const adapter = new CliAdapter(input, output);
 
   const agent = {
-    processMessage: vi.fn().mockResolvedValue({
-      message: "agent response",
-      toolCallsMade: 0,
-      model: "claude-sonnet-4",
-    }),
+    processMessageStream: vi.fn().mockReturnValue(
+      fakeStream([
+        { type: "text_delta", content: "agent response" },
+        {
+          type: "done",
+          response: {
+            message: "agent response",
+            toolCallsMade: 0,
+            model: "claude-sonnet-4",
+          },
+        },
+      ]),
+    ),
   } as unknown as Agent;
 
   const session = {
@@ -49,7 +65,7 @@ function readOutput(output: PassThrough): string {
 }
 
 describe("setupChat", () => {
-  it("passes regular messages to agent", async () => {
+  it("streams agent response to terminal", async () => {
     const { input, output, adapter, agent, session, sessionManager } =
       makeTestDeps();
 
@@ -59,9 +75,24 @@ describe("setupChat", () => {
     input.write("user question\n");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(agent.processMessage).toHaveBeenCalledWith(session, "user question");
+    expect(agent.processMessageStream).toHaveBeenCalledWith(session, "user question");
     const out = readOutput(output);
     expect(out).toContain("agent response");
+
+    await adapter.disconnect();
+  });
+
+  it("saves session after stream completes", async () => {
+    const { input, adapter, agent, session, sessionManager } =
+      makeTestDeps();
+
+    setupChat(adapter, agent, session, { sessionManager, model: "claude-sonnet-4" });
+    await adapter.connect();
+
+    input.write("hello\n");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(sessionManager.save).toHaveBeenCalledWith("test-id");
 
     await adapter.disconnect();
   });
@@ -76,7 +107,7 @@ describe("setupChat", () => {
     input.write("/help\n");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(agent.processMessage).not.toHaveBeenCalled();
+    expect(agent.processMessageStream).not.toHaveBeenCalled();
     const out = readOutput(output);
     expect(out).toContain("/new");
     expect(out).toContain("/status");
@@ -95,7 +126,7 @@ describe("setupChat", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(session.clearHistory).toHaveBeenCalled();
-    expect(agent.processMessage).not.toHaveBeenCalled();
+    expect(agent.processMessageStream).not.toHaveBeenCalled();
 
     await adapter.disconnect();
   });
@@ -110,88 +141,65 @@ describe("setupChat", () => {
     input.write("hello\n");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(agent.processMessage).toHaveBeenCalledWith(session, "hello");
+    expect(agent.processMessageStream).toHaveBeenCalledWith(session, "hello");
 
     await adapter.disconnect();
   });
-});
 
-// --- Streaming chat tests ---
+  it("streams multiple text deltas incrementally", async () => {
+    const { input, output, adapter, session, sessionManager } =
+      makeTestDeps();
 
-import { setupStreamingChat } from "./chat.js";
-import type { AgentStreamEvent } from "@safeclaw/core";
+    const agent = {
+      processMessageStream: vi.fn().mockReturnValue(
+        fakeStream([
+          { type: "text_delta", content: "Hello" },
+          { type: "text_delta", content: " world" },
+          {
+            type: "done",
+            response: {
+              message: "Hello world",
+              toolCallsMade: 0,
+              model: "claude-sonnet-4",
+            },
+          },
+        ]),
+      ),
+    } as unknown as Agent;
 
-async function* fakeStream(
-  events: AgentStreamEvent[],
-): AsyncGenerator<AgentStreamEvent> {
-  for (const event of events) {
-    yield event;
-  }
-}
+    setupChat(adapter, agent, session, { sessionManager, model: "claude-sonnet-4" });
+    await adapter.connect();
 
-function createStreamChatMocks() {
-  const adapter = {
-    onMessage: vi.fn(),
-    onStreamMessage: vi.fn(),
-    peer: { channelId: "cli", peerId: "local" },
-  } as unknown as CliAdapter;
+    input.write("Hi\n");
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-  const agent = {
-    processMessageStream: vi.fn(),
-  } as unknown as Agent;
+    const out = readOutput(output);
+    // Both deltas should appear in output (streamed directly, no newline between)
+    expect(out).toContain("Hello world");
 
-  const session = {} as Session;
-
-  return { adapter, agent, session };
-}
-
-describe("setupStreamingChat", () => {
-  it("registers a stream handler on the adapter", () => {
-    const { adapter, agent, session } = createStreamChatMocks();
-    setupStreamingChat(adapter, agent, session);
-    expect(adapter.onStreamMessage).toHaveBeenCalledWith(expect.any(Function));
+    await adapter.disconnect();
   });
 
-  it("handler calls processMessageStream and yields text deltas", async () => {
-    const { adapter, agent, session } = createStreamChatMocks();
+  it("does not save session on error events", async () => {
+    const { input, adapter, session, sessionManager } =
+      makeTestDeps();
 
-    const events: AgentStreamEvent[] = [
-      { type: "text_delta", content: "Hello" },
-      { type: "text_delta", content: " world" },
-      {
-        type: "done",
-        response: {
-          message: "Hello world",
-          toolCallsMade: 0,
-          model: "claude-sonnet-4",
-        },
-      },
-    ];
+    const agent = {
+      processMessageStream: vi.fn().mockReturnValue(
+        fakeStream([
+          { type: "error", error: "something broke" },
+        ]),
+      ),
+    } as unknown as Agent;
 
-    vi.mocked(agent.processMessageStream).mockReturnValue(
-      fakeStream(events),
-    );
+    setupChat(adapter, agent, session, { sessionManager, model: "claude-sonnet-4" });
+    await adapter.connect();
 
-    setupStreamingChat(adapter, agent, session);
+    input.write("fail\n");
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Get the handler that was registered
-    const handler = vi.mocked(adapter.onStreamMessage).mock.calls[0]![0] as (
-      msg: { peer: { channelId: string; peerId: string }; content: string; timestamp: Date },
-    ) => AsyncIterable<{ content: string; stream?: boolean }>;
+    expect(sessionManager.save).not.toHaveBeenCalled();
 
-    const outbound: Array<{ content: string; stream?: boolean }> = [];
-    for await (const msg of handler({
-      peer: { channelId: "cli", peerId: "local" },
-      content: "Hi",
-      timestamp: new Date(),
-    })) {
-      outbound.push(msg);
-    }
-
-    expect(outbound).toEqual([
-      { content: "Hello", stream: true },
-      { content: " world", stream: true },
-      { content: "", stream: false },
-    ]);
+    await adapter.disconnect();
   });
 });
