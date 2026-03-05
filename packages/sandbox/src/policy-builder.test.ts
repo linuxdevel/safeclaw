@@ -109,7 +109,14 @@ describe("PolicyBuilder", () => {
     });
 
     it("includes shared library paths as execute", () => {
-      const expectedPaths = ["/usr/lib", "/lib", "/lib64", "/usr/lib64"];
+      const expectedPaths = [
+        "/usr/lib",
+        "/usr/lib64",
+        "/usr/local/lib",
+        "/usr/local/lib64",
+        "/lib",
+        "/lib64",
+      ];
       for (const p of expectedPaths) {
         const rule = policy.filesystem.allow.find(
           (r: PathRule) => r.path === p,
@@ -240,7 +247,12 @@ describe("PolicyBuilder", () => {
 
     it("includes compiler and toolchain paths as execute", () => {
       // JDK, GCC libs, Go toolchain — compilers need their internal libs
-      const compilerPaths = ["/usr/lib/jvm", "/usr/lib/gcc", "/usr/libexec"];
+      const compilerPaths = [
+        "/usr/lib/jvm",
+        "/usr/lib/gcc",
+        "/usr/libexec",
+        "/usr/local/libexec",
+      ];
       for (const p of compilerPaths) {
         const rule = policy.filesystem.allow.find(
           (r: PathRule) => r.path === p,
@@ -250,20 +262,24 @@ describe("PolicyBuilder", () => {
       }
     });
 
-    it("includes /usr/include as read-only for C/C++ headers", () => {
-      const rule = policy.filesystem.allow.find(
-        (r: PathRule) => r.path === "/usr/include",
-      );
-      expect(rule).toBeDefined();
-      expect(rule!.access).toBe("read");
+    it("includes /usr/include and /usr/local/include as read-only for C/C++ headers", () => {
+      for (const p of ["/usr/include", "/usr/local/include"]) {
+        const rule = policy.filesystem.allow.find(
+          (r: PathRule) => r.path === p,
+        );
+        expect(rule, `expected ${p} to be in allow list`).toBeDefined();
+        expect(rule!.access).toBe("read");
+      }
     });
 
-    it("includes /usr/share as read-only for compiler support files", () => {
-      const rule = policy.filesystem.allow.find(
-        (r: PathRule) => r.path === "/usr/share",
-      );
-      expect(rule).toBeDefined();
-      expect(rule!.access).toBe("read");
+    it("includes /usr/share and /usr/local/share as read-only for compiler support files", () => {
+      for (const p of ["/usr/share", "/usr/local/share"]) {
+        const rule = policy.filesystem.allow.find(
+          (r: PathRule) => r.path === p,
+        );
+        expect(rule, `expected ${p} to be in allow list`).toBeDefined();
+        expect(rule!.access).toBe("read");
+      }
     });
   });
 

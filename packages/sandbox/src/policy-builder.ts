@@ -89,9 +89,11 @@ export class PolicyBuilder {
 
     // ── Shared libraries (execute) ───────────────────────────────────
     builder.addReadExecute("/usr/lib");
+    builder.addReadExecute("/usr/lib64");
+    builder.addReadExecute("/usr/local/lib");
+    builder.addReadExecute("/usr/local/lib64");
     builder.addReadExecute("/lib");
     builder.addReadExecute("/lib64");
-    builder.addReadExecute("/usr/lib64");
 
     // ── Compiler and toolchain paths (execute) ───────────────────────
     // JDK installations (javac, java, jar, etc.)
@@ -100,6 +102,7 @@ export class PolicyBuilder {
     builder.addReadExecute("/usr/lib/gcc");
     // Compiler/linker helper binaries (e.g. ld, as wrappers)
     builder.addReadExecute("/usr/libexec");
+    builder.addReadExecute("/usr/local/libexec");
 
     // ── Node.js install path ─────────────────────────────────────────
     // process.execPath is e.g. /home/user/.nvm/versions/node/v22.0.0/bin/node
@@ -113,9 +116,11 @@ export class PolicyBuilder {
 
     // C/C++ system headers
     builder.addReadOnly("/usr/include");
+    builder.addReadOnly("/usr/local/include");
 
     // Compiler support files, man pages, locale data
     builder.addReadOnly("/usr/share");
+    builder.addReadOnly("/usr/local/share");
 
     // Device nodes
     builder.addReadOnly("/dev/null");
