@@ -8,6 +8,7 @@ import { CliAdapter } from "./adapter.js";
 import { runOnboarding } from "./commands/onboard.js";
 import { bootstrapAgent } from "./commands/bootstrap.js";
 import { runAudit } from "./commands/audit.js";
+import { runDoctor } from "./commands/doctor.js";
 import { setupChat } from "./commands/chat.js";
 import { Gateway, DEFAULT_GATEWAY_CONFIG } from "@safeclaw/gateway";
 import { WebChatAdapter } from "@safeclaw/webchat";
@@ -28,6 +29,7 @@ function printUsage(output: NodeJS.WritableStream): void {
     "  onboard           Run the onboarding wizard",
     "  audit [--json]    Run a security audit of the running instance",
     "  serve|server      Start the gateway HTTP server + webchat",
+    "  doctor            Run system diagnostics and health checks",
     "  help              Show this help message",
     "  version           Print the version",
     "",
@@ -235,6 +237,12 @@ async function main(): Promise<void> {
     case "server":
       await runServe();
       break;
+
+    case "doctor": {
+      const exitCode = await runDoctor({ output: process.stdout });
+      process.exit(exitCode);
+      break;
+    }
 
     case "help":
     case "--help":

@@ -11,3 +11,4 @@ export type {
   KernelCapabilities,
   EnforcementLayers,
 } from "./types.js";
+export { findHelper } from "./helper.js";
