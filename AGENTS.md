@@ -74,8 +74,12 @@ Located in `packages/core/src/tools/builtin/`:
 - `bash.ts` -- Shell command execution
 - `web-fetch.ts` -- HTTP fetching
 - `web-search.ts` -- Web search via Brave Search API (conditionally included when `brave_api_key` exists in vault)
+- `process.ts` -- Background process management (start/status/log/kill/list)
 
 Each tool declares `requiredCapabilities` and implements a `ToolHandler` interface.
+
+### ProcessManager
+`packages/core/src/tools/process-manager.ts` -- Tracks spawned child processes by UUID. Features: ring buffer output capture (1MB max per process), automatic cleanup after 1 hour, maximum 8 concurrent processes. Used by the `process` builtin tool.
 
 ### Sandbox
 - `packages/sandbox/src/sandbox.ts` -- Spawns child process with `unshare` + native helper
@@ -107,8 +111,9 @@ Bootstrap flow (`packages/cli/src/commands/bootstrap.ts`):
 3. Create appropriate `ModelProvider` (CopilotProvider, OpenAIProvider, or AnthropicProvider)
 4. Load builtin skill manifest
 5. Read `brave_api_key` from vault; if present, include web_search tool in tool registry
-6. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
-7. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
+6. Create ProcessManager for background process tracking
+7. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
+8. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
 
 CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `help`, `version`
 

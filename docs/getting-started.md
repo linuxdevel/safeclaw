@@ -170,7 +170,7 @@ The prompt is `> `. Type your message after the prompt:
 > What files are in the current directory?
 ```
 
-The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, and `web_fetch`. If a `brave_api_key` is stored in the vault, the `web_search` tool is also available. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
+The agent has access to built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, and `process`. If a `brave_api_key` is stored in the vault, the `web_search` tool is also available. The `process` tool manages background processes (start, status, log, kill, list) with automatic cleanup after 1 hour and a maximum of 8 concurrent processes. Each tool requires specific capabilities that are checked at runtime. See [Architecture](architecture.md) for the request flow.
 
 ## Starting the WebChat UI
 

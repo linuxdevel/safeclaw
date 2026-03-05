@@ -24,6 +24,7 @@ import {
   CopilotProvider,
   OpenAIProvider,
   AnthropicProvider,
+  ProcessManager,
 } from "@safeclaw/core";
 import type { CopilotToken, CopilotModel, ModelProvider } from "@safeclaw/core";
 import {
@@ -169,8 +170,9 @@ export async function bootstrapAgent(
   const enforcer = new CapabilityEnforcer(capabilityRegistry);
 
   const braveApiKey = vault.get("brave_api_key");
+  const processManager = new ProcessManager();
   const toolRegistry = new SimpleToolRegistry();
-  for (const tool of createBuiltinTools({ braveApiKey })) {
+  for (const tool of createBuiltinTools({ braveApiKey, processManager })) {
     toolRegistry.register(tool);
   }
 

@@ -34,11 +34,11 @@
 │                      │                                         │
 │         ┌────────────┼────────────┐                            │
 │         ▼            ▼            ▼                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐              │
-│  │  read    │ │  bash    │ │ web_fetch│ │web_search │  Built-in   │
-│  │  write   │ │          │ │          │ │(optional) │  tools      │
-│  │  edit    │ │          │ │          │ │           │              │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐      │
+│  │  read    │ │  bash    │ │ web_fetch│ │web_search │ │  process  │      │
+│  │  write   │ │          │ │          │ │(optional) │ │           │      │
+│  │  edit    │ │          │ │          │ │           │ │           │      │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────┘ └───────────┘      │
 │                      │                                         │
 │                      ▼                                         │
 │              ┌────────────────┐                                │
@@ -113,7 +113,8 @@ Central package containing the agent runtime and security infrastructure.
 - `ToolOrchestrator`: capability-gated tool execution
 - `SimpleToolRegistry`: in-memory tool handler storage
 - `AuditLog`: records tool executions (request + result + timestamp)
-- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch` (plus optional `web_search` when `brave_api_key` is in vault)
+- Built-in tools: `read`, `write`, `edit`, `bash`, `web_fetch`, `process` (plus optional `web_search` when `brave_api_key` is in vault)
+- `ProcessManager`: tracks spawned child processes by UUID with ring buffer output capture (1MB max per process), automatic cleanup after 1 hour, and maximum 8 concurrent processes
 
 **Channels** (`channels/`):
 - `ChannelAdapter` interface: `connect`, `disconnect`, `onMessage`, `send`
@@ -204,7 +205,7 @@ Agent (response handling)
   │     │ 4. Record in AuditLog
   │     │
   │     ▼
-  │   Tool Handler (read/write/edit/bash/web_fetch/web_search)
+  │   Tool Handler (read/write/edit/bash/web_fetch/web_search/process)
   │     │ Executes the operation
   │     │ Returns result string
   │     │
