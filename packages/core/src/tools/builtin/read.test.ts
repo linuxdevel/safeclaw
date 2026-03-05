@@ -18,6 +18,30 @@ describe("readTool", () => {
     expect(readTool.requiredCapabilities).toEqual(["fs:read"]);
   });
 
+  it("exposes a valid JSON Schema for parameters", () => {
+    expect(readTool.parameters).toEqual({
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute path to the file to read",
+        },
+        offset: {
+          type: "integer",
+          description: "Line number to start from (1-indexed)",
+          minimum: 1,
+        },
+        limit: {
+          type: "integer",
+          description: "Maximum number of lines to read",
+          minimum: 1,
+        },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    });
+  });
+
   it("reads a file and returns line-numbered content", async () => {
     vi.mocked(readFileSync).mockReturnValue("hello\nworld\n");
 

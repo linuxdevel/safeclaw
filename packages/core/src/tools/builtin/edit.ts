@@ -7,6 +7,32 @@ export const editTool: ToolHandler = {
     "Apply a string replacement to a file. Validates the old string exists and is unique unless replaceAll is set.",
   requiredCapabilities: ["fs:read", "fs:write"],
 
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Absolute path to the file to edit",
+      },
+      oldString: {
+        type: "string",
+        description: "The exact string to find and replace",
+      },
+      newString: {
+        type: "string",
+        description: "The replacement string",
+      },
+      replaceAll: {
+        type: "boolean",
+        description:
+          "Replace all occurrences instead of requiring uniqueness",
+        default: false,
+      },
+    },
+    required: ["path", "oldString", "newString"],
+    additionalProperties: false,
+  },
+
   async execute(args: Record<string, unknown>): Promise<string> {
     const path = args["path"];
     if (typeof path !== "string") {

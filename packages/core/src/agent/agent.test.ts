@@ -50,6 +50,14 @@ function makeToolHandler(overrides: Partial<ToolHandler> = {}): ToolHandler {
   return {
     name: "read_file",
     description: "Read a file from disk",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path" },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
     requiredCapabilities: ["fs:read"],
     execute: async (_args: Record<string, unknown>) => "file-content",
     ...overrides,
@@ -435,7 +443,14 @@ describe("Agent", () => {
         function: {
           name: "write_file",
           description: "Write to a file",
-          parameters: {},
+          parameters: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "File path" },
+            },
+            required: ["path"],
+            additionalProperties: false,
+          },
         },
       });
     });

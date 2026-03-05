@@ -7,6 +7,24 @@ export const webFetchTool: ToolHandler = {
   description: "Fetch a URL via HTTPS and return the response body",
   requiredCapabilities: ["net:https"],
 
+  parameters: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "HTTPS URL to fetch",
+      },
+      format: {
+        type: "string",
+        description: "Response format",
+        enum: ["text", "json"],
+        default: "text",
+      },
+    },
+    required: ["url"],
+    additionalProperties: false,
+  },
+
   async execute(args: Record<string, unknown>): Promise<string> {
     const urlArg = args["url"];
     if (typeof urlArg !== "string") {

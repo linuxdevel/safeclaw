@@ -18,6 +18,30 @@ describe("bashTool", () => {
     expect(bashTool.requiredCapabilities).toEqual(["process:spawn"]);
   });
 
+  it("exposes a valid JSON Schema for parameters", () => {
+    expect(bashTool.parameters).toEqual({
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: "Shell command to execute via /bin/bash",
+        },
+        timeout: {
+          type: "integer",
+          description: "Timeout in milliseconds",
+          default: 120000,
+          minimum: 1,
+        },
+        workdir: {
+          type: "string",
+          description: "Working directory for command execution",
+        },
+      },
+      required: ["command"],
+      additionalProperties: false,
+    });
+  });
+
   it("executes a command via /bin/bash and returns stdout", async () => {
     vi.mocked(execFile).mockImplementation(
       (_cmd: unknown, _args: unknown, _opts: unknown, cb: unknown) => {

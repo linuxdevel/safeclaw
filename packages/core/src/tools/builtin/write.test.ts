@@ -19,6 +19,24 @@ describe("writeTool", () => {
     expect(writeTool.requiredCapabilities).toEqual(["fs:write"]);
   });
 
+  it("exposes a valid JSON Schema for parameters", () => {
+    expect(writeTool.parameters).toEqual({
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute path to the file to write",
+        },
+        content: {
+          type: "string",
+          description: "Content to write to the file",
+        },
+      },
+      required: ["path", "content"],
+      additionalProperties: false,
+    });
+  });
+
   it("writes content to a file and creates parent dirs", async () => {
     const result = await writeTool.execute({
       path: "/tmp/sub/test.txt",

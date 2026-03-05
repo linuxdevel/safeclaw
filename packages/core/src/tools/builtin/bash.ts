@@ -8,6 +8,28 @@ export const bashTool: ToolHandler = {
   description: "Execute a shell command via /bin/bash",
   requiredCapabilities: ["process:spawn"],
 
+  parameters: {
+    type: "object",
+    properties: {
+      command: {
+        type: "string",
+        description: "Shell command to execute via /bin/bash",
+      },
+      timeout: {
+        type: "integer",
+        description: "Timeout in milliseconds",
+        default: 120000,
+        minimum: 1,
+      },
+      workdir: {
+        type: "string",
+        description: "Working directory for command execution",
+      },
+    },
+    required: ["command"],
+    additionalProperties: false,
+  },
+
   async execute(args: Record<string, unknown>): Promise<string> {
     const command = args["command"];
     if (typeof command !== "string") {

@@ -135,7 +135,7 @@ export class Agent {
     // via the typed cast since the registry is passed in constructor
     const registry = (
       this.orchestrator as unknown as {
-        toolRegistry: { list(): Array<{ name: string; description: string }> };
+        toolRegistry: { list(): Array<{ name: string; description: string; parameters: Record<string, unknown> }> };
       }
     ).toolRegistry;
 
@@ -148,7 +148,7 @@ export class Agent {
       function: {
         name: handler.name,
         description: handler.description,
-        parameters: {},
+        parameters: handler.parameters,
       },
     }));
   }

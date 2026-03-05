@@ -6,6 +6,28 @@ export const readTool: ToolHandler = {
   description: "Read a file's contents with optional offset and line limit",
   requiredCapabilities: ["fs:read"],
 
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Absolute path to the file to read",
+      },
+      offset: {
+        type: "integer",
+        description: "Line number to start from (1-indexed)",
+        minimum: 1,
+      },
+      limit: {
+        type: "integer",
+        description: "Maximum number of lines to read",
+        minimum: 1,
+      },
+    },
+    required: ["path"],
+    additionalProperties: false,
+  },
+
   async execute(args: Record<string, unknown>): Promise<string> {
     const path = args["path"];
     if (typeof path !== "string") {

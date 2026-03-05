@@ -19,6 +19,34 @@ describe("editTool", () => {
     expect(editTool.requiredCapabilities).toEqual(["fs:read", "fs:write"]);
   });
 
+  it("exposes a valid JSON Schema for parameters", () => {
+    expect(editTool.parameters).toEqual({
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Absolute path to the file to edit",
+        },
+        oldString: {
+          type: "string",
+          description: "The exact string to find and replace",
+        },
+        newString: {
+          type: "string",
+          description: "The replacement string",
+        },
+        replaceAll: {
+          type: "boolean",
+          description:
+            "Replace all occurrences instead of requiring uniqueness",
+          default: false,
+        },
+      },
+      required: ["path", "oldString", "newString"],
+      additionalProperties: false,
+    });
+  });
+
   it("replaces a unique string in a file", async () => {
     vi.mocked(readFileSync).mockReturnValue("hello world");
 

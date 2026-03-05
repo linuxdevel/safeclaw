@@ -16,6 +16,26 @@ describe("webFetchTool", () => {
     expect(webFetchTool.requiredCapabilities).toEqual(["net:https"]);
   });
 
+  it("exposes a valid JSON Schema for parameters", () => {
+    expect(webFetchTool.parameters).toEqual({
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "HTTPS URL to fetch",
+        },
+        format: {
+          type: "string",
+          description: "Response format",
+          enum: ["text", "json"],
+          default: "text",
+        },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    });
+  });
+
   it("fetches a URL and returns text body", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

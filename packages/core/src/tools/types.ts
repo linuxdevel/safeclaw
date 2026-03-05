@@ -25,6 +25,7 @@ export interface ToolExecutionResult {
 export interface ToolHandler {
   name: string;
   description: string;
+  parameters: Record<string, unknown>;
   requiredCapabilities: Capability[];
   execute(args: Record<string, unknown>): Promise<string>;
 }
