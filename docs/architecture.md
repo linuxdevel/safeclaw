@@ -256,11 +256,11 @@ Alternatively, with OS keyring: a random 32-byte key is stored in GNOME Keyring 
 ### Session management
 
 ```
-InboundMessage { peer: { channelId, peerId } }
+InboundMessage { peer: { channelId, peerId, scope? } }
        │
        ▼
 SessionManager.getOrCreate(peer)
-       │ lookup by "channelId:peerId"
+       │ lookup by "channelId:peerId:scope"
        │
        ├── Found → return existing Session
        │
@@ -269,10 +269,10 @@ SessionManager.getOrCreate(peer)
                          │ empty message history
                          │
                          ▼
-                    Session stored in memory
+                    Session stored in memory + persisted to disk
 ```
 
-Sessions are in-memory only. They do not persist across restarts.
+Sessions are persisted to disk via `FileSessionStore`. For the CLI, sessions are directory-scoped: session data lives in `<cwd>/.safeclaw/sessions/` alongside the project code. Each CLI invocation starts a fresh session but loads a compressed context summary from prior sessions. Users can resume a specific session with `--session <id>`. Global config (vault, safeclaw.json) remains in `~/.safeclaw/`.
 
 ### Audit logging
 

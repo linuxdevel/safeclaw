@@ -161,9 +161,10 @@ make -C native check  # Run native tests
 
 ## Data Storage
 
-- **No database** -- all runtime state is in-memory (sessions, audit log, capability registry)
+- **No database** -- all runtime state is in-memory (audit log, capability registry)
 - **Vault**: JSON file on disk (`~/.safeclaw/vault.json`), AES-256-GCM encrypted, 0o600 permissions
-- **Config**: `~/.safeclaw/` directory
+- **Config**: `~/.safeclaw/` directory (global user config)
+- **Sessions**: persisted to `<cwd>/.safeclaw/sessions/` (directory-scoped, per-project)
 
 ## Git Policy
 

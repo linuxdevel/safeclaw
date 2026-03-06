@@ -72,6 +72,7 @@ Planned features in implementation order:
 | 5 | Parallel agents | [plan](docs/plans/2026-03-05-parallel-agents.md) | Medium |
 | 6 | Long-running background agents | [plan](docs/plans/2026-03-05-background-agents.md) | Medium |
 | 7 | Superpowers skill integration | [plan](docs/plans/2026-03-05-superpowers-integration.md) | Medium |
+| 8 | Directory-scoped sessions | [plan](docs/plans/2026-03-06-directory-scoped-sessions.md) | Medium |
 
 ## CLI Commands
 
