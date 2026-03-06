@@ -168,7 +168,22 @@ make -C native check  # Run native tests
 
 ## Git Policy
 
-**Never commit or push changes.** When work is complete (or at a logical stopping point), stop and ask the user to commit by providing a ready-to-run `git commit` command line with a good commit message. Example:
+**Never commit or push changes.** When work is complete (or at a logical stopping point), stop and provide ready-to-run `git commit` commands for **all** changes made during the session. If changes span multiple logical units, provide multiple commit commands in sequence so each commit is atomic and well-scoped. Always list every file touched and group them by commit. Example:
+
+```
+Ready to commit. Run:
+
+git add packages/sandbox/src/types.ts packages/sandbox/src/detect.ts packages/sandbox/src/detect.test.ts && \
+git commit -m "feat(sandbox): extend EnforcementLayers and KernelCapabilities types for bwrap"
+
+git add packages/sandbox/src/policy-builder.ts packages/sandbox/src/policy-builder.test.ts && \
+git commit -m "feat(sandbox): add toBwrapArgs() and selective home directory binding"
+
+git add docs/sandboxing.md docs/security-model.md README.md AGENTS.md && \
+git commit -m "docs: update documentation for bubblewrap sandbox integration"
+```
+
+If all changes are a single logical unit, a single commit is fine:
 
 ```
 Ready to commit. Run:
@@ -176,7 +191,7 @@ Ready to commit. Run:
 git add -A && git commit -m "feat(tools): add JSON Schema parameters to all builtin tools"
 ```
 
-The user will review and run the command themselves. Do not run `git add`, `git commit`, `git push`, or any other git write operation.
+The user will review and run the commands themselves. Do not run `git add`, `git commit`, `git push`, or any other git write operation.
 
 ## Conventions
 
