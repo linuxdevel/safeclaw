@@ -97,6 +97,10 @@ export class OpenAIProvider implements ModelProvider {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OpenAIProvider.REQUEST_TIMEOUT_MS),
     });
   }
+
+  /** Default timeout for all API requests (ms). */
+  static readonly REQUEST_TIMEOUT_MS = 60_000;
 }

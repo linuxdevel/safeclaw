@@ -87,25 +87,31 @@ export class CliAdapter implements ChannelAdapter {
       write(s: string): boolean;
     };
 
-    if (this.streamHandler) {
-      for await (const chunk of this.streamHandler(inbound)) {
-        if (chunk.stream) {
-          stream.write(chunk.content);
-        } else {
-          stream.write("\n");
+    try {
+      if (this.streamHandler) {
+        for await (const chunk of this.streamHandler(inbound)) {
+          if (chunk.stream) {
+            stream.write(chunk.content);
+          } else {
+            stream.write("\n");
+          }
         }
+        this.rl?.prompt();
+        return;
       }
-      this.rl?.prompt();
-      return;
+
+      if (!this.handler) {
+        this.rl?.prompt();
+        return;
+      }
+
+      const response = await this.handler(inbound);
+      await this.send(this.peer, response);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      stream.write(`\nError: ${message}\n`);
     }
 
-    if (!this.handler) {
-      this.rl?.prompt();
-      return;
-    }
-
-    const response = await this.handler(inbound);
-    await this.send(this.peer, response);
     this.rl?.prompt();
   }
 }

@@ -53,8 +53,14 @@ export class ContextCompactor {
    *
    * 1. Split history into "old" (to summarize) and "recent" (to preserve).
    * 2. Adjust the split point so tool-call/tool-result pairs are never broken.
-   * 3. Send old messages to LLM for summarization.
-   * 4. Return [summary_message, ...recent_messages].
+   * 3. If old messages are extremely large (>= 2x context window), skip
+   *    summarization and truncate immediately — no point calling the API
+   *    with a payload that will hang or overflow.
+   * 4. Otherwise send old messages to LLM for summarization.
+   * 5. Return [summary_message, ...recent_messages].
+   *
+   * If summarization fails (API error, timeout, payload too large), falls
+   * back to simple truncation — old messages are discarded with a marker.
    */
   async compact(history: ChatMessage[]): Promise<ChatMessage[]> {
     // Not enough messages to compact
@@ -78,8 +84,33 @@ export class ContextCompactor {
     const oldMessages = history.slice(0, splitIndex);
     const recentMessages = history.slice(splitIndex);
 
-    // Summarize old messages via LLM
-    const summary = await this.summarize(oldMessages);
+    // Fast path: if the old messages are massively oversized (estimated at
+    // >= 1.5x the context window), skip summarization entirely.  Sending
+    // this much text to the API will likely hang or fail anyway.
+    const oldTokens = this.estimateTokens(oldMessages);
+    if (oldTokens >= this.maxContextTokens * 1.5) {
+      const fallbackMessage: ChatMessage = {
+        role: "user",
+        content:
+          `[Previous conversation: ${oldMessages.length} messages (~${oldTokens} tokens) truncated due to context limits]`,
+      };
+      return [fallbackMessage, ...recentMessages];
+    }
+
+    // Try to summarize; fall back to simple truncation on failure.
+    let summary: string;
+    try {
+      summary = await this.summarize(oldMessages);
+    } catch {
+      // Summarization failed (API error, context overflow, timeout, etc.).
+      // Fall back: discard old messages with a brief marker.
+      const fallbackMessage: ChatMessage = {
+        role: "user",
+        content:
+          `[Previous conversation: ${oldMessages.length} messages omitted due to context limits]`,
+      };
+      return [fallbackMessage, ...recentMessages];
+    }
 
     const summaryMessage: ChatMessage = {
       role: "user",
@@ -116,16 +147,14 @@ export class ContextCompactor {
 
   /**
    * Call the LLM to produce a concise summary of the given messages.
+   *
+   * If the conversation text exceeds half the context window, only the
+   * most recent old messages are included to stay within budget.
    */
   private async summarize(messages: ChatMessage[]): Promise<string> {
     // Build a text representation of old messages for summarization.
     // Strip tool_calls metadata — just include the content.
-    const conversationText = messages
-      .map((m) => {
-        const prefix = m.role === "tool" ? "tool-result" : m.role;
-        return `[${prefix}]: ${m.content}`;
-      })
-      .join("\n");
+    const conversationText = this.buildSummarizationText(messages);
 
     const response = await this.provider.chat({
       model: this.model,
@@ -149,5 +178,41 @@ export class ContextCompactor {
       throw new Error("No choices in summarization response");
     }
     return choice.message.content;
+  }
+
+  /**
+   * Build the text payload for summarization, capping at a reasonable
+   * budget.  If messages exceed the budget, only the most recent ones
+   * are included (with a note about omitted earlier messages).
+   *
+   * Budget: maxContextTokens / 4 characters.  At ~4 chars per token
+   * this is roughly maxContextTokens / 16 tokens — well within the
+   * model's limits while leaving ample room for output and system prompt.
+   */
+  private buildSummarizationText(messages: ChatMessage[]): string {
+    const maxChars = Math.max(this.maxContextTokens / 4, 5_000);
+
+    // Build lines from newest to oldest, stop when we exceed budget
+    const lines: string[] = [];
+    let totalChars = 0;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      const prefix = m.role === "tool" ? "tool-result" : m.role;
+      const line = `[${prefix}]: ${m.content}`;
+
+      if (totalChars + line.length > maxChars && lines.length > 0) {
+        // Would exceed budget — stop here
+        lines.push(`[...${i + 1} earlier messages omitted...]`);
+        break;
+      }
+
+      lines.push(line);
+      totalChars += line.length;
+    }
+
+    // Reverse back to chronological order
+    lines.reverse();
+    return lines.join("\n");
   }
 }

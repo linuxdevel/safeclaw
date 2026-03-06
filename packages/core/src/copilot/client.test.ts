@@ -148,6 +148,23 @@ describe("CopilotClient", () => {
       expect(err.message).toContain("Chat request failed: 400 Bad Request");
       expect(err.message).toContain("invalid_model");
     });
+
+    it("includes AbortSignal timeout on requests", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          id: "x",
+          model: "claude-sonnet-4",
+          choices: [],
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        }),
+      );
+
+      const client = new CopilotClient(token);
+      await client.chat(baseRequest);
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
   });
 
   describe("chatStream", () => {

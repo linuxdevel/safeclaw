@@ -865,4 +865,141 @@ describe("Agent", () => {
       expect(result.message).toBe("Hello!");
     });
   });
+
+  describe("streaming context compaction", () => {
+    it("compacts session history before chatStream when estimated tokens exceed threshold", async () => {
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      const chunks = makeStreamChunks("Compacted response.");
+      vi.mocked(provider.chatStream).mockReturnValue(
+        asyncIterableFrom(chunks),
+      );
+
+      const compactor = {
+        estimateTokens: vi.fn().mockReturnValue(90000),
+        shouldCompact: vi.fn().mockReturnValue(true),
+        compact: vi.fn().mockResolvedValue([
+          { role: "user", content: "[Previous conversation summary]\nSummary here." },
+        ]),
+      } as unknown as ContextCompactor;
+
+      const agent = new Agent(makeConfig(), provider, orchestrator, compactor);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Hello with large context"),
+      );
+
+      expect(compactor.estimateTokens).toHaveBeenCalled();
+      expect(compactor.shouldCompact).toHaveBeenCalledWith(90000);
+      expect(compactor.compact).toHaveBeenCalled();
+      expect(session.setHistory).toHaveBeenCalled();
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
+    });
+
+    it("does not compact streaming context when estimated tokens are below threshold", async () => {
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      const chunks = makeStreamChunks("Small context response.");
+      vi.mocked(provider.chatStream).mockReturnValue(
+        asyncIterableFrom(chunks),
+      );
+
+      const compactor = {
+        estimateTokens: vi.fn().mockReturnValue(5000),
+        shouldCompact: vi.fn().mockReturnValue(false),
+        compact: vi.fn(),
+      } as unknown as ContextCompactor;
+
+      const agent = new Agent(makeConfig(), provider, orchestrator, compactor);
+      await collectEvents(
+        agent.processMessageStream(session, "Hi"),
+      );
+
+      expect(compactor.estimateTokens).toHaveBeenCalled();
+      expect(compactor.shouldCompact).toHaveBeenCalledWith(5000);
+      expect(compactor.compact).not.toHaveBeenCalled();
+    });
+
+    it("compacts before second chatStream call after tool results grow context", async () => {
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([makeToolHandler()]);
+
+      // First stream: tool call
+      const toolChunks = makeToolCallStreamChunks([
+        {
+          id: "call_compact",
+          name: "read_file",
+          arguments: JSON.stringify({ path: "/large/file" }),
+        },
+      ]);
+
+      // Second stream: final text
+      const textChunks = makeStreamChunks("Here is the result.");
+
+      vi.mocked(provider.chatStream)
+        .mockReturnValueOnce(asyncIterableFrom(toolChunks))
+        .mockReturnValueOnce(asyncIterableFrom(textChunks));
+
+      vi.mocked(orchestrator.execute).mockResolvedValue({
+        success: true,
+        output: "x".repeat(100000), // Large tool output to trigger compaction
+        durationMs: 5,
+        sandboxed: false,
+      });
+
+      // First call: below threshold; second call (after tool result): above threshold
+      const compactor = {
+        estimateTokens: vi.fn()
+          .mockReturnValueOnce(5000)   // before first chatStream
+          .mockReturnValueOnce(90000), // before second chatStream (after tool result added)
+        shouldCompact: vi.fn()
+          .mockReturnValueOnce(false)  // first check: under threshold
+          .mockReturnValueOnce(true),  // second check: over threshold
+        compact: vi.fn().mockResolvedValue([
+          { role: "user", content: "[Previous conversation summary]\nSummary." },
+          { role: "user", content: "Latest message" },
+        ]),
+      } as unknown as ContextCompactor;
+
+      const agent = new Agent(makeConfig(), provider, orchestrator, compactor);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Read large file"),
+      );
+
+      // estimateTokens called twice: once per loop iteration
+      expect(compactor.estimateTokens).toHaveBeenCalledTimes(2);
+      // shouldCompact called twice
+      expect(compactor.shouldCompact).toHaveBeenCalledTimes(2);
+      // compact only called on the second iteration
+      expect(compactor.compact).toHaveBeenCalledTimes(1);
+      expect(session.setHistory).toHaveBeenCalledTimes(1);
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
+    });
+
+    it("streams without compactor (backward compatible)", async () => {
+      const { session, provider, orchestrator, toolRegistry } = createMocks();
+      vi.mocked(toolRegistry.list).mockReturnValue([]);
+
+      const chunks = makeStreamChunks("No compactor.");
+      vi.mocked(provider.chatStream).mockReturnValue(
+        asyncIterableFrom(chunks),
+      );
+
+      // No compactor — should work fine
+      const agent = new Agent(makeConfig(), provider, orchestrator);
+      const events = await collectEvents(
+        agent.processMessageStream(session, "Hi"),
+      );
+
+      const doneEvents = events.filter((e) => e.type === "done");
+      expect(doneEvents).toHaveLength(1);
+      const done = doneEvents[0] as { type: "done"; response: { message: string } };
+      expect(done.response.message).toBe("No compactor.");
+    });
+  });
 });

@@ -121,4 +121,60 @@ describe("CliAdapter", () => {
     const out = readOutput(output);
     expect(out).toContain("bot reply");
   });
+
+  it("displays error and re-prompts when onMessage handler throws", async () => {
+    const handler = vi.fn().mockRejectedValue(new Error("Network failure"));
+    adapter.onMessage(handler);
+
+    await adapter.connect();
+    readOutput(output);
+
+    input.write("trigger error\n");
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const out = readOutput(output);
+    expect(out).toContain("Error: Network failure");
+    // Prompt should reappear after the error
+    expect(out).toContain("> ");
+  });
+
+  it("displays error and re-prompts when stream handler throws", async () => {
+    adapter.onStreamMessage(async function* () {
+      yield { content: "partial", stream: true };
+      throw new Error("Stream crashed");
+    });
+
+    await adapter.connect();
+    readOutput(output);
+
+    input.write("trigger stream error\n");
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const out = readOutput(output);
+    // Partial output should have been written before the error
+    expect(out).toContain("partial");
+    expect(out).toContain("Error: Stream crashed");
+    // Prompt should reappear after the error
+    expect(out).toContain("> ");
+  });
+
+  it("displays error and re-prompts when stream handler throws before yielding", async () => {
+    // eslint-disable-next-line require-yield
+    adapter.onStreamMessage(async function* () {
+      throw new Error("Immediate failure");
+    });
+
+    await adapter.connect();
+    readOutput(output);
+
+    input.write("immediate fail\n");
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const out = readOutput(output);
+    expect(out).toContain("Error: Immediate failure");
+    expect(out).toContain("> ");
+  });
 });

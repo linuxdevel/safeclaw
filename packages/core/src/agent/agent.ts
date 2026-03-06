@@ -151,6 +151,19 @@ export class Agent {
 
     try {
       for (;;) {
+        // Compact context before each LLM call using token estimation.
+        // Streaming responses don't include usage data, so we estimate
+        // from message content. Without this, long sessions silently
+        // overflow the context window causing empty or hung responses.
+        if (this.compactor) {
+          const history = session.getHistory();
+          const estimated = this.compactor.estimateTokens(history);
+          if (this.compactor.shouldCompact(estimated)) {
+            const compacted = await this.compactor.compact(history);
+            session.setHistory(compacted);
+          }
+        }
+
         const messages: ChatMessage[] = [
           { role: "system", content: this.config.systemPrompt },
           ...session.getHistory(),
