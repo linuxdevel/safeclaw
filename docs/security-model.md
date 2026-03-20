@@ -11,7 +11,11 @@ Two principles drive every design decision:
 
 ## Sandboxing architecture
 
-SafeClaw uses three Linux kernel mechanisms for mandatory process isolation. Sandboxing cannot be disabled.
+SafeClaw uses a two-layer sandbox for mandatory process isolation. Sandboxing cannot be disabled.
+
+The **outer layer** is provided by `@anthropic-ai/sandbox-runtime`: bubblewrap (`bwrap`) on Linux with `pivot_root` filesystem isolation and Linux namespaces (PID, net, mount, user); `sandbox-exec` on macOS.
+
+The **inner layer** is the C helper binary (`safeclaw-sandbox-helper`), which applies Landlock, seccomp-BPF, and capability dropping inside the container. It is active on Linux when the helper binary is found.
 
 ### Landlock
 
@@ -45,15 +49,15 @@ set_robust_list, rseq, prlimit64, getrandom
 - **Networking**: socket, connect, bind, listen, accept, accept4, recvfrom, sendto, recvmsg, sendmsg, shutdown, setsockopt, getsockopt, getpeername, getsockname, socketpair
 - **Misc**: ioctl, prctl, arch_prctl, set_tid_address, set_robust_list, futex, sched_yield, sched_getaffinity, uname, prlimit64, getrandom, rseq, memfd_create, copy_file_range, fadvise64, fallocate, ftruncate, truncate, mlock, munlock, mincore
 
-### Linux namespaces
+### Linux namespaces (via bubblewrap)
 
-Four namespace types isolate sandboxed processes:
+On Linux, four namespace types isolate sandboxed processes inside the bwrap container:
 
 | Namespace | Purpose |
 |-----------|---------|
 | PID | Process sees only its own PID tree |
-| Network | No network access (or localhost-only) |
-| Mount | Isolated filesystem view |
+| Network | Isolated network stack; external access controlled by sandbox-runtime network proxy |
+| Mount | Isolated filesystem view with `pivot_root` |
 | User | Unprivileged user mapping |
 
 ### DEFAULT_POLICY
@@ -84,7 +88,7 @@ const sandbox = new Sandbox(policy);
 The development policy grants:
 - **Execute access**: `/usr/bin`, `/usr/local/bin`, `/bin`, `/usr/sbin`, `/sbin`, `/usr/lib/jvm`, `/usr/lib/gcc`, `/usr/libexec`, plus the Node.js install prefix
 - **Read access**: `/usr/include`, `/usr/share`, shared library paths (`/lib`, `/usr/lib`, `/lib64`, `/usr/lib64`), `/etc`, `/proc`, `/dev/null`, `/dev/urandom`, `/dev/zero`, `/dev/random`
-- **Read-write access**: CWD, `/tmp`, `~/.safeclaw`
+- **Read-write access**: CWD, `/tmp`, `/dev/null`
 - **Extra paths**: `DevelopmentPolicyOptions` supports `extraExecutePaths` (e.g., `~/.cargo/bin`, `~/.rustup`) and `extraReadWritePaths` for user-local toolchains
 - **Expanded syscalls**: ~120 syscalls (see seccomp-BPF section above)
 - **Network**: `"none"` (unchanged from default)

@@ -8,7 +8,7 @@ SafeClaw is an AI coding assistant with multi-provider LLM support (GitHub Copil
 
 The target user is an individual developer who wants AI-assisted coding with strong guarantees against prompt injection, malicious tool calls, and data exfiltration.
 
-**Linux-only. Node.js >= 22. pnpm 9+.**
+**Linux and macOS. Node.js >= 22. pnpm 9+.**
 
 ## Repository Structure
 
@@ -83,10 +83,10 @@ Each tool declares `requiredCapabilities` and implements a `ToolHandler` interfa
 `packages/core/src/tools/process-manager.ts` -- Tracks spawned child processes by UUID. Features: ring buffer output capture (1MB max per process), automatic cleanup after 1 hour, maximum 8 concurrent processes. Used by the `process` builtin tool.
 
 ### Sandbox
-- `packages/sandbox/src/sandbox.ts` -- Spawns child process with `unshare` + native helper
-- `packages/sandbox/src/policy-builder.ts` -- `PolicyBuilder` class with fluent API; `PolicyBuilder.forDevelopment(cwd, options?)` creates a development-ready policy with allowlisted system paths, compiler toolchains (JVM, GCC), an expanded ~120 syscall allowlist, and support for `extraExecutePaths`/`extraReadWritePaths` via `DevelopmentPolicyOptions`
+- `packages/sandbox/src/sandbox.ts` -- Wraps commands via `@anthropic-ai/sandbox-runtime` (`SandboxManager.wrapWithSandbox()`) as the outer layer; injects the C helper as the inner process via `--policy-file <tmp>` when found
+- `packages/sandbox/src/policy-builder.ts` -- `PolicyBuilder` class with fluent API; `PolicyBuilder.forDevelopment(cwd, options?)` creates a development-ready policy with allowlisted system paths, compiler toolchains (JVM, GCC), an expanded ~120 syscall allowlist, and support for `extraExecutePaths`/`extraReadWritePaths` via `DevelopmentPolicyOptions`; `PolicyBuilder.toRuntimeConfig(policy)` translates `SandboxPolicy` to `SandboxRuntimeConfig` for sandbox-runtime (write allowlist + credential dir denylist)
 - `native/src/main.c` -- C helper binary that applies: Landlock filesystem rules, seccomp-BPF syscall filtering, capability dropping, `PR_SET_NO_NEW_PRIVS`
-- Policy sent to helper via fd 3 as JSON
+- Policy sent to helper via `--policy-file <tmp>` (JSON written to a temp file at mode 0o600; cleaned up after each execution)
 
 ### Vault
 `packages/vault/src/vault.ts` -- AES-256-GCM encrypted JSON file store. Keys derived via scrypt from passphrase or fetched from OS keyring (GNOME `secret-tool`). File permissions enforced at 0o600.
@@ -114,7 +114,8 @@ Bootstrap flow (`packages/cli/src/commands/bootstrap.ts`):
 4. Load builtin skill manifest
 5. Read `brave_api_key` from vault; if present, include web_search tool in tool registry
 6. Create ProcessManager for background process tracking
-7. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
+7. Initialize `SandboxManager` network proxy (via `PolicyBuilder.toRuntimeConfig()`)
+8. Create: CapabilityRegistry -> CapabilityEnforcer -> ToolRegistry -> Sandbox -> ToolOrchestrator -> ContextCompactor -> Agent
 8. Return `{ agent, sessionManager, capabilityRegistry, auditLog }`
 
 CLI commands: `chat` (default), `onboard`, `audit`, `serve`/`server`, `doctor`, `help`, `version`

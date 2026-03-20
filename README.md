@@ -12,7 +12,7 @@ SafeClaw is a secure AI coding assistant with mandatory OS-level sandboxing, sig
 curl -fsSL https://raw.githubusercontent.com/linuxdevel/safeclaw/main/install.sh | bash
 ```
 
-Requires: Linux (x86\_64 or arm64), Node.js >= 22, bubblewrap (`apt install bubblewrap`).
+Requires: Linux (x86\_64 or arm64) or macOS, Node.js >= 22, bubblewrap (`apt install bubblewrap`), socat (`apt install socat`).
 
 After install, run `safeclaw onboard` for first-time setup.
 
@@ -20,7 +20,7 @@ After install, run `safeclaw onboard` for first-time setup.
 
 ### Security
 
-- Zero-trust security model with mandatory OS-level sandboxing — bubblewrap `pivot_root` filesystem isolation (outer) + Landlock + seccomp-BPF + capability dropping (inner), Linux namespaces (PID, net, mount, IPC, UTS)
+- Zero-trust security model with mandatory OS-level sandboxing — `@anthropic-ai/sandbox-runtime` outer layer (bubblewrap `pivot_root` + bind mounts on Linux; sandbox-exec on macOS) + C helper inner layer (Landlock + seccomp-BPF + capability dropping on Linux). Supports Linux and macOS.
 - Development-ready sandbox policy via `PolicyBuilder.forDevelopment()` — allows compilers (GCC, JVM), package managers, and standard dev tools while enforcing kernel-level access control. Selective home directory binding hides `~/.ssh`, `~/.aws`, `~/.gnupg` structurally.
 - AES-256-GCM encrypted secrets vault with OS keyring or passphrase-derived keys
 - Ed25519-signed skill manifests with capability declarations and runtime enforcement
@@ -69,7 +69,7 @@ Planned features in implementation order:
 | 2 | Automatic context compaction | [plan](docs/plans/2026-03-05-context-compaction.md) | High |
 | 3 | Streaming UX (Phase 1 — readline) | [plan](docs/plans/2026-03-05-streaming-ux.md) | High |
 | 4 | Better CLI/TUI (Ink-based) | [plan](docs/plans/2026-03-05-tui.md) | High |
-| 5 | Bubblewrap sandbox (`pivot_root` isolation) | [design](docs/plans/2026-03-07-bubblewrap-sandbox-design.md) · [plan](docs/plans/2026-03-07-bubblewrap-sandbox-implementation.md) | High |
+| 5 | Sandbox-runtime integration (`pivot_root` + macOS support) | [design](docs/plans/2026-03-07-bubblewrap-sandbox-design.md) · [plan](docs/plans/2026-03-20-sandbox-runtime-integration.md) | **Done** |
 | 6 | Parallel agents | [plan](docs/plans/2026-03-05-parallel-agents.md) | Medium |
 | 7 | Long-running background agents | [plan](docs/plans/2026-03-05-background-agents.md) | Medium |
 | 8 | Superpowers skill integration | [plan](docs/plans/2026-03-05-superpowers-integration.md) | Medium |
@@ -93,7 +93,7 @@ Planned features in implementation order:
 Monorepo structure:
 
 - `@safeclaw/vault` — Encrypted secrets storage
-- `@safeclaw/sandbox` — OS-level process sandboxing with bubblewrap (`pivot_root`) + C helper (Landlock/seccomp) and `PolicyBuilder` for development-ready policies
+- `@safeclaw/sandbox` — OS-level process sandboxing: outer layer via `@anthropic-ai/sandbox-runtime` (bwrap on Linux, sandbox-exec on macOS), inner layer via C helper (Landlock + seccomp-BPF + cap-drop). `PolicyBuilder` for development-ready policies; `PolicyBuilder.toRuntimeConfig()` translates policies for sandbox-runtime.
 - `@safeclaw/core` — Capabilities, agent runtime, sessions, tools, skills, model providers, copilot client
 - `@safeclaw/gateway` — HTTP server with auth and rate limiting
 - `@safeclaw/cli` — Command-line interface

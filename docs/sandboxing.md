@@ -22,33 +22,43 @@ SafeClaw treats every tool execution as untrusted. The sandbox limits the blast 
 
 ## Architecture
 
+SafeClaw uses a two-layer sandbox. The outer layer (provided by `@anthropic-ai/sandbox-runtime`) creates a container using bubblewrap on Linux or sandbox-exec on macOS. The inner layer (the C helper binary) applies Landlock, seccomp-BPF, and capability dropping inside the container.
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Node.js: Sandbox.execute(command, args)                     │
 │                                                              │
 │  1. Resolve helper binary (discovery)                        │
-│  2. Serialize policy JSON (filesystem + syscalls)            │
-│  3. Spawn: unshare [ns-flags] -- helper -- command [args]    │
-│  4. Write policy JSON to fd 3                                │
-│  5. Collect stdout/stderr, enforce timeout                   │
+│  2. Write policy JSON to temp file (mode 0o600)              │
+│  3. Build inner command: helper --policy-file <tmp> -- cmd   │
+│  4. Translate SandboxPolicy → SandboxRuntimeConfig           │
+│     (PolicyBuilder.toRuntimeConfig)                          │
+│  5. SandboxManager.wrapWithSandbox(innerCmd, rtConfig)       │
+│  6. Spawn wrapped command via /bin/sh -c                     │
+│  7. Collect stdout/stderr, enforce timeout                   │
+│  8. Cleanup: delete temp policy file                         │
 └──────────────────────┬───────────────────────────────────────┘
                        │ fork+exec
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  unshare(1)                                                  │
-│  Creates Linux namespaces:                                   │
-│  - PID namespace (--pid --fork)                              │
-│  - Network namespace (--net)                                 │
-│  - Mount namespace (--mount)                                 │
-│  - User namespace (--user --map-root-user)                   │
+│  @anthropic-ai/sandbox-runtime (outer layer)                 │
+│                                                              │
+│  Linux (bubblewrap):                                         │
+│  - pivot_root: new filesystem root with bind-mounted paths   │
+│  - PID, network, mount, user namespaces                      │
+│  - Network proxy (socat) for controlled domain access        │
+│                                                              │
+│  macOS (sandbox-exec):                                       │
+│  - sandbox-exec profile restricts filesystem + network       │
 └──────────────────────┬───────────────────────────────────────┘
                        │ exec
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  safeclaw-sandbox-helper (static C binary, ~800 KB)          │
+│  (Linux only; skipped on macOS)                              │
 │                                                              │
 │  1. Self-checks (refuse setuid, PR_SET_NO_NEW_PRIVS)         │
-│  2. Read policy JSON from fd 3                               │
+│  2. Read policy JSON from --policy-file path                 │
 │  3. Apply Landlock filesystem restrictions                   │
 │  4. Close all fds > 2 (fd hygiene)                           │
 │  5. Drop all Linux capabilities                              │
@@ -60,10 +70,10 @@ SafeClaw treats every tool execution as untrusted. The sandbox limits the blast 
 ┌──────────────────────────────────────────────────────────────┐
 │  Target command (e.g., /bin/bash -c "npm test")              │
 │                                                              │
-│  Runs with ALL restrictions active:                          │
-│  - Filesystem: only declared paths accessible                │
+│  Runs with ALL restrictions active (Linux):                  │
+│  - Filesystem: pivot_root container + Landlock path rules    │
 │  - Syscalls: only allow-listed syscalls permitted            │
-│  - Network: isolated (no connectivity)                       │
+│  - Network: isolated via namespace + network proxy           │
 │  - Capabilities: all dropped                                 │
 │  - Privileges: cannot escalate (NO_NEW_PRIVS)                │
 └──────────────────────────────────────────────────────────────┘
@@ -73,18 +83,31 @@ SafeClaw treats every tool execution as untrusted. The sandbox limits the blast 
 
 ## Enforcement layers
 
-### Layer 1: Linux namespaces (via `unshare`)
+### Layer 1: Container isolation (via `@anthropic-ai/sandbox-runtime`)
 
-Namespaces provide coarse-grained isolation at the kernel level.
+The outer layer uses `@anthropic-ai/sandbox-runtime` to create an isolated process container. The specific mechanism varies by platform:
 
-| Namespace | Flag | Effect |
-|-----------|------|--------|
-| PID | `--pid --fork` | Process sees only its own PID tree; cannot signal host processes |
-| Network | `--net` | Fresh network stack with only loopback; no external connectivity |
-| Mount | `--mount` | Isolated mount table; filesystem modifications don't affect host |
-| User | `--user --map-root-user` | Unprivileged user mapping; enables other namespaces without root |
+**Linux (bubblewrap / bwrap):**
 
-Namespace isolation is handled by the standard `unshare(1)` utility. This is the baseline -- it works even without the helper binary.
+| Feature | Effect |
+|---------|--------|
+| `pivot_root` | New filesystem root; only bind-mounted paths are visible |
+| PID namespace | Process sees only its own PID tree; cannot signal host processes |
+| Network namespace | Fresh network stack; external connectivity controlled by network proxy |
+| Mount namespace | Isolated mount table; filesystem changes don't affect host |
+| User namespace | Unprivileged user mapping; enables other namespaces without root |
+| Network proxy (socat) | Intercepts outbound connections; enforces `allowedDomains`/`deniedDomains` |
+
+`PolicyBuilder.toRuntimeConfig()` translates a `SandboxPolicy` into a `SandboxRuntimeConfig`:
+- `filesystem.allow` rules with `readwrite` or `readwriteexecute` access map to `allowWrite` (bind-mounted read-write)
+- Sensitive credential directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, etc.) that exist as real directories (not symlinks) are added to `denyRead`; symlinks are excluded to avoid bwrap failures on WSL2
+- Network policy maps to `allowedDomains`/`deniedDomains`
+
+**macOS (sandbox-exec):**
+
+The macOS `sandbox-exec` utility applies a Seatbelt profile that restricts filesystem access and network connectivity. Linux-specific layers (Landlock, seccomp-BPF, namespaces) are not available on macOS.
+
+This is the baseline — it works even without the C helper binary.
 
 ### Layer 2: Landlock filesystem restrictions
 
@@ -159,7 +182,7 @@ The enforcement order within the helper is critical for correctness:
 
 ## Policy format
 
-The policy JSON written to fd 3 contains only the fields relevant to the helper (namespace and network isolation are handled by `unshare`):
+The policy JSON written to the temp file (and passed to the helper via `--policy-file`) contains only the fields relevant to the helper (namespace and network isolation are handled by the outer sandbox-runtime layer):
 
 ```json
 {
@@ -178,7 +201,7 @@ The policy JSON written to fd 3 contains only the fields relevant to the helper 
 }
 ```
 
-The full `SandboxPolicy` type (in TypeScript) also includes `network`, `namespaces`, and `timeoutMs` -- these are consumed by the Node.js layer, not the helper.
+The full `SandboxPolicy` type (in TypeScript) also includes `network`, `namespaces`, and `timeoutMs` -- these are consumed by the Node.js layer and translated to `SandboxRuntimeConfig` for sandbox-runtime, not passed to the helper.
 
 ---
 
@@ -186,32 +209,35 @@ The full `SandboxPolicy` type (in TypeScript) also includes `network`, `namespac
 
 ### Discovery order
 
-`Sandbox.execute()` searches for the helper binary in this order:
+`findHelper()` searches for the helper binary in this order:
 
 1. **`SAFECLAW_HELPER_PATH`** environment variable -- for custom installations and testing
 2. **Co-located path** -- `native/safeclaw-sandbox-helper` relative to the package
 3. **User install path** -- `~/.safeclaw/bin/safeclaw-sandbox-helper`
 4. **System PATH** -- resolved via `which`
 
-If the helper is found and executable, all four enforcement layers (namespaces + Landlock + seccomp + capability drop) are active. If not found, SafeClaw falls back to namespace-only isolation.
+If the helper is found and executable, the full enforcement stack (outer sandbox-runtime container + inner Landlock + seccomp + capability drop) is active. If not found, only the outer sandbox-runtime layer is applied.
 
 > **TODO:** Re-add SHA-256 integrity verification of the helper binary once builds are reproducible. Currently, the binary hash changes across compiler versions and build environments, making a hardcoded hash impractical without a release process that stamps it.
 
 ### Graceful degradation
 
-| Helper status | Enforcement |
-|---------------|-------------|
-| Found | Namespaces + Landlock + seccomp + capability drop |
-| Not found | Namespaces only |
+| Platform | Helper status | Enforcement |
+|----------|---------------|-------------|
+| Linux | Found | bwrap container (pivot_root + namespaces) + Landlock + seccomp + capability drop |
+| Linux | Not found | bwrap container only (pivot_root + namespaces) |
+| macOS | N/A | sandbox-exec profile only |
 
 The `SandboxResult.enforcement` field reports which layers were active:
 
 ```typescript
 interface EnforcementLayers {
-  namespaces: boolean;  // unshare was used
-  landlock: boolean;    // Landlock filesystem restrictions active
-  seccomp: boolean;     // seccomp-BPF syscall filter active
-  capDrop: boolean;     // all capabilities dropped
+  namespaces: boolean;   // Linux namespaces active (bwrap)
+  pivotRoot: boolean;    // pivot_root filesystem isolation (bwrap on Linux)
+  bindMounts: boolean;   // bind-mounted paths (always true when sandbox-runtime runs)
+  landlock: boolean;     // Landlock filesystem restrictions active (C helper)
+  seccomp: boolean;      // seccomp-BPF syscall filter active (Linux + helper)
+  capDrop: boolean;      // all capabilities dropped (C helper)
 }
 ```
 
@@ -273,15 +299,22 @@ interface EnforcementLayers {
 
 ---
 
-## Kernel requirements
+## Platform requirements
 
-SafeClaw v1 requires Linux with:
+### Linux
 
 - **Kernel >= 5.13** -- for Landlock LSM support
 - **seccomp-BPF** -- enabled in kernel config (`CONFIG_SECCOMP_FILTER=y`)
 - **User namespaces** -- `sysctl kernel.unprivileged_userns_clone=1` (default on most distros)
+- **bubblewrap** -- `bwrap` binary in PATH (`apt install bubblewrap`)
+- **socat** -- required by sandbox-runtime network proxy (`apt install socat`)
 
-The `safeclaw onboard` command checks these requirements during setup. The `detectKernelCapabilities()` function provides programmatic detection.
+### macOS
+
+- macOS 10.14+ (Mojave) for sandbox-exec support
+- socat (`brew install socat`) for network proxy
+
+The `safeclaw onboard` command checks these requirements during setup. The `detectKernelCapabilities()` function provides programmatic detection. `safeclaw doctor` runs `bwrapCheck`, `socatCheck`, and `platformCheck` to verify the environment.
 
 ---
 

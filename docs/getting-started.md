@@ -4,26 +4,34 @@
 
 - **Node.js** >= 22.0.0
 - **pnpm** >= 9.0.0
-- **Linux** with kernel >= 5.13 (required for Landlock, seccomp-BPF, and namespaces)
+- **Linux** with kernel >= 5.13 (required for Landlock, seccomp-BPF, and namespaces), **or macOS** (uses sandbox-exec for outer isolation; C helper not available on macOS)
+- **bubblewrap** (`apt install bubblewrap` on Debian/Ubuntu) — required on Linux for `pivot_root` filesystem isolation
+- **socat** (`apt install socat` on Debian/Ubuntu) — required by `@anthropic-ai/sandbox-runtime` for network proxy
 - **GNOME Keyring** (`secret-tool`) if using OS keyring for vault encryption (optional; passphrase fallback available)
 - A **GitHub account** with Copilot access (for default Copilot provider), or an **OpenAI** or **Anthropic** API key
 
-### Verifying kernel support
+### Verifying sandbox support
 
-SafeClaw requires mandatory sandboxing. Check that your kernel supports the necessary features:
+Run `safeclaw doctor` after installation to verify all dependencies. To manually check:
 
 ```bash
-# Kernel version (must be >= 5.13)
+# bubblewrap (Linux)
+which bwrap && bwrap --version
+
+# socat (network proxy)
+which socat
+
+# Kernel version (Linux, must be >= 5.13 for Landlock)
 uname -r
 
-# Seccomp support
+# Seccomp support (Linux)
 grep Seccomp /proc/self/status
 
-# Namespace support
+# Namespace support (Linux)
 ls /proc/self/ns/{user,pid,net,mnt}
 ```
 
-All four namespaces (user, PID, net, mount) must be available. If any are missing, SafeClaw will warn during onboarding and sandbox isolation will be limited.
+All four namespaces (user, PID, net, mount) must be available on Linux. If any are missing, SafeClaw will warn during onboarding and sandbox isolation will be limited. On macOS, namespace-based isolation is replaced by sandbox-exec.
 
 ## Installation
 
@@ -209,8 +217,8 @@ Run diagnostic checks to verify your SafeClaw installation:
 safeclaw doctor
 ```
 
-The doctor command runs 12 checks across four categories:
-- **System**: Node.js version, native helper binary, disk space
+The doctor command runs checks across four categories:
+- **System**: Node.js version, platform support, bubblewrap (`bwrap`), native helper binary, socat, ripgrep (`rg`), disk space
 - **Security**: Landlock, seccomp, namespace support
 - **Config**: vault accessibility, signing key, default model
 - **Connectivity**: GitHub Copilot API reachability

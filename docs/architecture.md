@@ -74,9 +74,10 @@ OS-level process isolation using Linux kernel features.
 
 - `SandboxPolicy` / `DEFAULT_POLICY`: policy types with maximally restrictive defaults
 - `PolicyBuilder`: fluent API for constructing sandbox policies; `PolicyBuilder.forDevelopment(cwd)` creates a ready-made policy for software development with allowlisted system paths, compiler toolchains, and an expanded syscall set
-- `detectKernelCapabilities`: probes `/proc` for Landlock, seccomp, namespace support
+- `detectKernelCapabilities`: probes `/proc` for Landlock, seccomp, namespace support; also detects bubblewrap availability
 - `assertSandboxSupported`: throws if required kernel features are missing
-- `Sandbox` class: executes commands under policy (stub in v1; types and policies are real)
+- `Sandbox` class: executes commands by wrapping via `SandboxManager.wrapWithSandbox()` (outer layer) and injecting the C helper as the inner process via `--policy-file` when found
+- `PolicyBuilder.toRuntimeConfig()`: translates `SandboxPolicy` to `SandboxRuntimeConfig` for sandbox-runtime (write allowlist, credential dir denylist, network domains)
 
 No dependencies on other SafeClaw packages.
 
@@ -148,7 +149,7 @@ Command-line interface adapter.
 - `runOnboarding`: five-step onboarding wizard (kernel check, auth, vault, signing key, model selection)
 - `setupChat`: wires the CLI adapter to the agent
 - `runAudit`: generates security audit reports (text or JSON)
-- `runDoctor`: runs 12 diagnostic checks across system, security, config, and connectivity categories
+- `runDoctor`: runs diagnostic checks across system (platform, bwrap, socat, rg, helper binary), security (Landlock, seccomp, namespaces), config, and connectivity categories
 
 Dependencies: `@safeclaw/core`, `@safeclaw/gateway`, `@safeclaw/sandbox`, `@safeclaw/vault`.
 
@@ -294,9 +295,9 @@ The audit log maintains the last N entries in memory (default: 100). The `safecl
 
 ## Key design decisions
 
-### Linux-only (v1)
+### Linux and macOS
 
-SafeClaw v1 targets Linux exclusively. The sandboxing architecture depends on Landlock (kernel >= 5.13), seccomp-BPF, and Linux namespaces. These have no direct equivalents on macOS or Windows. Future versions may add platform-specific sandboxing.
+SafeClaw supports Linux and macOS. On Linux, the full stack is available: bubblewrap `pivot_root` container (via `@anthropic-ai/sandbox-runtime`) + Landlock + seccomp-BPF + capability dropping (via C helper). On macOS, the outer `sandbox-exec` layer is used; the C helper and Linux-specific enforcement (Landlock, seccomp, namespaces) are not active. Windows is not supported.
 
 ### Multi-provider LLM support
 
