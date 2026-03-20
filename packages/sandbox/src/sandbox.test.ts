@@ -8,6 +8,8 @@ const mockFindHelper = vi.fn<() => string | undefined>();
 const mockWrapWithSandbox = vi.fn<(cmd: string) => Promise<string>>();
 const mockIsSandboxingEnabled = vi.fn<() => boolean>();
 const mockCleanupAfterCommand = vi.fn<() => void>();
+const mockWriteFileSync = vi.fn<() => void>();
+const mockRmSync = vi.fn<() => void>();
 
 vi.mock("./detect.js", () => ({
   assertSandboxSupported: mockAssertSandboxSupported,
@@ -25,6 +27,11 @@ vi.mock("@anthropic-ai/sandbox-runtime", () => ({
   },
 }));
 
+vi.mock("node:fs", () => ({
+  writeFileSync: (...args: unknown[]) => mockWriteFileSync(...args),
+  rmSync: (...args: unknown[]) => mockRmSync(...args),
+}));
+
 const { Sandbox } = await import("./sandbox.js");
 
 const FULL_CAPS: KernelCapabilities = {
@@ -40,6 +47,8 @@ describe("Sandbox", () => {
     mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
     mockIsSandboxingEnabled.mockReturnValue(true);
     mockFindHelper.mockReturnValue(undefined);
+    mockWriteFileSync.mockReturnValue(undefined);
+    mockRmSync.mockReturnValue(undefined);
   });
 
   it("constructor calls assertSandboxSupported", () => {
@@ -66,6 +75,8 @@ describe("Sandbox.execute()", () => {
     mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
     mockIsSandboxingEnabled.mockReturnValue(true);
     mockFindHelper.mockReturnValue(undefined);
+    mockWriteFileSync.mockReturnValue(undefined);
+    mockRmSync.mockReturnValue(undefined);
   });
 
   it("calls wrapWithSandbox with shell-quoted command", async () => {
@@ -116,5 +127,65 @@ describe("Sandbox.execute()", () => {
     const sandbox = new Sandbox(DEFAULT_POLICY);
     await sandbox.execute("/bin/false", []);
     expect(mockCleanupAfterCommand).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Sandbox.execute() with helper", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAssertSandboxSupported.mockReturnValue(FULL_CAPS);
+    mockIsSandboxingEnabled.mockReturnValue(true);
+    mockWriteFileSync.mockReturnValue(undefined);
+    mockRmSync.mockReturnValue(undefined);
+  });
+
+  it("includes --policy-file in the inner command when helper is found", async () => {
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockWrapWithSandbox.mockImplementation(async (cmd: string) => cmd);
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    await sandbox.execute("/bin/echo", ["hello"]);
+
+    const innerCmd: string = mockWrapWithSandbox.mock.calls[0]![0]!;
+    expect(innerCmd).toContain("safeclaw-sandbox-helper");
+    expect(innerCmd).toContain("--policy-file");
+    expect(innerCmd).toContain("--");
+    expect(innerCmd).toContain("echo");
+  });
+
+  it("sets enforcement.landlock=true and enforcement.capDrop=true when helper is found", async () => {
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockWrapWithSandbox.mockResolvedValue("/bin/true");
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    const result = await sandbox.execute("/bin/true", []);
+
+    expect(result.enforcement?.landlock).toBe(true);
+    expect(result.enforcement?.capDrop).toBe(true);
+  });
+
+  it("does NOT set landlock/capDrop when helper is not found", async () => {
+    mockFindHelper.mockReturnValue(undefined);
+    mockWrapWithSandbox.mockResolvedValue("/bin/true");
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    const result = await sandbox.execute("/bin/true", []);
+
+    expect(result.enforcement?.landlock).toBe(false);
+    expect(result.enforcement?.capDrop).toBe(false);
+  });
+
+  it("cleans up policy temp file even if command fails", async () => {
+    mockFindHelper.mockReturnValue("/usr/local/bin/safeclaw-sandbox-helper");
+    mockWrapWithSandbox.mockResolvedValue("/bin/false");
+
+    const sandbox = new Sandbox(DEFAULT_POLICY);
+    await sandbox.execute("/bin/false", []);
+
+    expect(mockWriteFileSync).toHaveBeenCalledOnce();
+    expect(mockRmSync).toHaveBeenCalledWith(
+      expect.stringContaining("safeclaw-policy-"),
+      { force: true },
+    );
   });
 });
