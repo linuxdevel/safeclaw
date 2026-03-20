@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { homedir } from "node:os";
 import { PolicyBuilder } from "./policy-builder.js";
 import type { SandboxPolicy, PathRule } from "./types.js";
+import { DEFAULT_POLICY } from "./types.js";
+import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 
 describe("PolicyBuilder", () => {
   describe("addReadExecute()", () => {
@@ -343,5 +345,65 @@ describe("PolicyBuilder", () => {
       );
       expect(matches).toHaveLength(1);
     });
+  });
+});
+
+describe("PolicyBuilder.toRuntimeConfig()", () => {
+  it("maps readwrite PathRules to allowWrite", () => {
+    const policy = new PolicyBuilder()
+      .addReadWrite("/project")
+      .addReadWrite("/tmp")
+      .build();
+    const rtConfig: SandboxRuntimeConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.filesystem.allowWrite).toContain("/project");
+    expect(rtConfig.filesystem.allowWrite).toContain("/tmp");
+  });
+
+  it("maps readwriteexecute PathRules to allowWrite", () => {
+    const policy = new PolicyBuilder().addReadWriteExecute("/workspace").build();
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.filesystem.allowWrite).toContain("/workspace");
+  });
+
+  it("does not add read-only or execute-only paths to allowWrite", () => {
+    const policy = new PolicyBuilder()
+      .addReadOnly("/etc")
+      .addReadExecute("/usr/bin")
+      .build();
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.filesystem.allowWrite).not.toContain("/etc");
+    expect(rtConfig.filesystem.allowWrite).not.toContain("/usr/bin");
+  });
+
+  it("adds sensitive home dirs to denyRead", () => {
+    const policy = new PolicyBuilder().build();
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    const home = homedir();
+    expect(rtConfig.filesystem.denyRead).toContain(`${home}/.ssh`);
+    expect(rtConfig.filesystem.denyRead).toContain(`${home}/.aws`);
+    expect(rtConfig.filesystem.denyRead).toContain(`${home}/.gnupg`);
+  });
+
+  it("maps network: 'none' to allowedDomains: []", () => {
+    const policy = { ...DEFAULT_POLICY, network: "none" as const };
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.network.allowedDomains).toEqual([]);
+  });
+
+  it("maps network object to allowedDomains/deniedDomains", () => {
+    const policy: SandboxPolicy = {
+      ...DEFAULT_POLICY,
+      network: { allowedDomains: ["github.com", "*.npmjs.org"], deniedDomains: ["evil.com"] },
+    };
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.network.allowedDomains).toEqual(["github.com", "*.npmjs.org"]);
+    expect(rtConfig.network.deniedDomains).toEqual(["evil.com"]);
+  });
+
+  it("forDevelopment().toRuntimeConfig() includes cwd in allowWrite", () => {
+    const cwd = "/home/user/project";
+    const policy = PolicyBuilder.forDevelopment(cwd);
+    const rtConfig = PolicyBuilder.toRuntimeConfig(policy);
+    expect(rtConfig.filesystem.allowWrite).toContain(cwd);
   });
 });

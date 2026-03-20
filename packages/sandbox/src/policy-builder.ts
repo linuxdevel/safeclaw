@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { dirname } from "node:path";
-import type { SandboxPolicy, PathRule } from "./types.js";
+import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
+import type { SandboxPolicy, PathRule, NetworkPolicy } from "./types.js";
 
 /** Options for customizing the development policy */
 export interface DevelopmentPolicyOptions {
@@ -8,6 +9,14 @@ export interface DevelopmentPolicyOptions {
   extraExecutePaths?: string[];
   /** Additional paths that need readwrite access (e.g. ~/.cache) */
   extraReadWritePaths?: string[];
+  /** Additional read-only paths */
+  extraReadOnlyPaths?: string[];
+  /**
+   * Network domains the sandboxed process may connect to.
+   * Default: [] (block all network). Use this to allow e.g. npm registry.
+   * Example: ["registry.npmjs.org", "*.github.com"]
+   */
+  allowedNetworkDomains?: string[];
 }
 
 /**
@@ -61,6 +70,50 @@ export class PolicyBuilder {
       network: "none",
       namespaces: { pid: true, net: true, mnt: true, user: true },
       timeoutMs: 30_000,
+    };
+  }
+
+  /**
+   * Translates a SafeClaw SandboxPolicy into a SandboxRuntimeConfig for
+   * @anthropic-ai/sandbox-runtime.
+   *
+   * Read model difference: SafeClaw uses an allowlist (Landlock); sandbox-runtime
+   * is permissive-by-default with an explicit denylist. We translate by denying
+   * the sensitive credential dirs that must never be readable.
+   *
+   * Write model: both use allowlists. PathRules with access "readwrite" or
+   * "readwriteexecute" map to filesystem.allowWrite.
+   */
+  static toRuntimeConfig(policy: SandboxPolicy): SandboxRuntimeConfig {
+    // ── Filesystem ────────────────────────────────────────────────────
+    const allowWrite = policy.filesystem.allow
+      .filter((r) => r.access === "readwrite" || r.access === "readwriteexecute")
+      .map((r) => r.path);
+
+    // Always deny reads to credential/secret directories.
+    // sandbox-runtime also enforces mandatory deny on dangerous files (.bashrc,
+    // .git/hooks, etc.) regardless of this config — these are complementary.
+    const home = homedir();
+    const denyRead = [
+      `${home}/.ssh`,
+      `${home}/.aws`,
+      `${home}/.gnupg`,
+      `${home}/.kube`,
+      `${home}/.docker`,
+      `${home}/.gcloud`,
+      `${home}/.azure`,
+    ];
+
+    // ── Network ───────────────────────────────────────────────────────
+    const network = buildNetworkConfig(policy.network);
+
+    return {
+      filesystem: {
+        allowWrite,
+        denyWrite: [],
+        denyRead,
+      },
+      network,
     };
   }
 
@@ -149,6 +202,11 @@ export class PolicyBuilder {
         builder.addReadWrite(p);
       }
     }
+    if (options?.extraReadOnlyPaths) {
+      for (const p of options.extraReadOnlyPaths) {
+        builder.addReadOnly(p);
+      }
+    }
 
     // ── Expanded syscall allowlist ───────────────────────────────────
     // Includes all DEFAULT_POLICY syscalls plus what common dev tools need
@@ -156,8 +214,29 @@ export class PolicyBuilder {
       builder.syscalls.push(sc);
     }
 
-    return builder.build();
+    // ── Network ──────────────────────────────────────────────────────
+    const networkPolicy: NetworkPolicy =
+      options?.allowedNetworkDomains !== undefined
+        ? { allowedDomains: options.allowedNetworkDomains }
+        : "none";
+
+    return { ...builder.build(), network: networkPolicy };
   }
+}
+
+function buildNetworkConfig(
+  network: NetworkPolicy,
+): SandboxRuntimeConfig["network"] {
+  if (network === "none") {
+    return { allowedDomains: [], deniedDomains: [] };
+  }
+  if (network === "localhost") {
+    return { allowedDomains: ["localhost"], deniedDomains: [] };
+  }
+  return {
+    allowedDomains: network.allowedDomains,
+    deniedDomains: network.deniedDomains ?? [],
+  };
 }
 
 /**

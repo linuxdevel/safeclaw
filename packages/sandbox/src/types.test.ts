@@ -1,5 +1,5 @@
 import { describe, it, expectTypeOf } from "vitest";
-import type { NetworkPolicy, SandboxPolicy, EnforcementLayers, KernelCapabilities } from "./types.js";
+import type { NetworkPolicy, EnforcementLayers, KernelCapabilities } from "./types.js";
 
 describe("NetworkPolicy", () => {
   it("accepts 'none'", () => {
