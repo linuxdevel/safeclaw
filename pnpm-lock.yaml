@@ -29,6 +29,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@anthropic-ai/sandbox-runtime':
+        specifier: git+ssh://git@github.com/anthropic-experimental/sandbox-runtime.git#20f5176a94314038695bee13779eb9eebbbaeb49
+        version: https://codeload.github.com/anthropic-experimental/sandbox-runtime/tar.gz/20f5176a94314038695bee13779eb9eebbbaeb49
       '@safeclaw/core':
         specifier: workspace:*
         version: link:../core

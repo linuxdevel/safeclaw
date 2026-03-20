@@ -9,9 +9,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Build if dist is missing or sources are newer
+# Build if dist is missing or any source file is newer than the dist
 CLI_DIST="$REPO_DIR/packages/cli/dist/cli.js"
-if [ ! -f "$CLI_DIST" ]; then
+if [ ! -f "$CLI_DIST" ] || find "$REPO_DIR/packages" -name "*.ts" -newer "$CLI_DIST" | grep -q .; then
   echo "Building SafeClaw..." >&2
   pnpm --dir "$REPO_DIR" build
 fi

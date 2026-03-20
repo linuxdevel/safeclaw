@@ -133,9 +133,10 @@ export async function bootstrapAgent(
   }
 
   // 5. Build Agent stack
-  // Precedence: vault > config file > defaults
+  // Precedence: config file > vault > defaults
+  // Config file wins so users can override the vault-stored model without re-onboarding.
   const vaultModel = vault.get("default_model") as CopilotModel | undefined;
-  const model = vaultModel ?? config.model ?? DEFAULT_AGENT_CONFIG.model;
+  const model = config.model ?? vaultModel ?? DEFAULT_AGENT_CONFIG.model;
 
   const providerId = vault.get("provider") ?? "copilot";
   const provider = await createProvider(providerId, vault, exchangeToken, githubToken);

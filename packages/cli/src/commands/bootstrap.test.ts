@@ -360,7 +360,7 @@ describe("bootstrapAgent", () => {
     expect(deps.loadConfig).toHaveBeenCalledWith("/tmp/safeclaw.json");
   });
 
-  it("vault default_model takes precedence over config file model", async () => {
+  it("config file model takes precedence over vault default_model", async () => {
     const loadConfigMock = vi.fn().mockReturnValue({
       model: "gpt-4.1",
       systemPrompt: "Custom prompt",
@@ -388,7 +388,6 @@ describe("bootstrapAgent", () => {
 
     const result = await bootstrapAgent(deps);
     expect(result.agent).toBeDefined();
-    // Vault value should win — verified via the agent being constructed
-    // with the vault model (the Agent constructor receives the config)
+    // Config file value should win over vault (config: gpt-4.1, vault: claude-opus-4)
   });
 });
