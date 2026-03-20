@@ -163,6 +163,7 @@ async function runSelector(
     const cleanup = (): void => {
       input.removeListener("data", onData);
       (input as NodeJS.ReadStream).setRawMode?.(false);
+      input.pause();
     };
 
     // Attach listener first, then resume — ensures no data events are missed.
