@@ -53,6 +53,16 @@ cp pnpm-lock.yaml bundle/safeclaw/pnpm-lock.yaml
 echo "==> Installing production dependencies in bundle..."
 (cd bundle/safeclaw && pnpm install --prod --frozen-lockfile)
 
+echo "==> Patching sandbox-runtime dist into bundle..."
+MAIN_SRT=$(find node_modules/.pnpm -maxdepth 4 -path "*/@anthropic-ai/sandbox-runtime" -type d | head -1)
+BUNDLE_SRT=$(find bundle/safeclaw/node_modules/.pnpm -maxdepth 4 -path "*/@anthropic-ai/sandbox-runtime" -type d | head -1)
+if [ -n "$MAIN_SRT" ] && [ -d "$MAIN_SRT/dist" ] && [ -n "$BUNDLE_SRT" ]; then
+  cp -r "$MAIN_SRT/dist" "$BUNDLE_SRT/"
+else
+  echo "ERROR: sandbox-runtime dist not found; run the CI build step first" >&2
+  exit 1
+fi
+
 echo "==> Creating tarball..."
 tar czf "$TARBALL" -C bundle safeclaw
 
