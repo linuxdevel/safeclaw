@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { Sandbox } from "./sandbox.js";
 import { DEFAULT_POLICY } from "./types.js";
 import type { SandboxPolicy } from "./types.js";
@@ -68,6 +69,27 @@ const ECHO_POLICY: SandboxPolicy = {
 };
 
 describe("Sandbox integration (real binary)", () => {
+  beforeAll(async () => {
+    // Initialize sandbox-runtime proxy infrastructure before any Sandbox is constructed.
+    // This mirrors what bootstrapAgent() does in production.
+    try {
+      await SandboxManager.initialize({
+        filesystem: { allowWrite: [], denyWrite: [], denyRead: [] },
+        network: { allowedDomains: [], deniedDomains: [] },
+      });
+    } catch {
+      // Initialization failure is non-fatal — filesystem isolation still applies.
+    }
+  });
+
+  afterAll(async () => {
+    try {
+      await SandboxManager.reset();
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
   it.skipIf(!helperExists || !canUnshareUser)(
     "seccomp enforcement blocks missing syscalls with DEFAULT_POLICY",
     async () => {

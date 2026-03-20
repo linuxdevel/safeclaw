@@ -1,14 +1,25 @@
 import { spawn } from "node:child_process";
-import type { Writable } from "node:stream";
+import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import type { SandboxPolicy, SandboxResult, EnforcementLayers } from "./types.js";
 import { assertSandboxSupported } from "./detect.js";
-import { findHelper } from "./helper.js";
+import { PolicyBuilder } from "./policy-builder.js";
+
+/** POSIX single-quote shell escaping. Safe for all byte values. */
+function shEscape(arg: string): string {
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
 
 export class Sandbox {
   private readonly policy: SandboxPolicy;
 
   constructor(policy: SandboxPolicy) {
     assertSandboxSupported();
+    if (!SandboxManager.isSandboxingEnabled()) {
+      throw new Error(
+        "SandboxManager is not initialized. Call SandboxManager.initialize() " +
+          "before constructing a Sandbox (see bootstrapAgent()).",
+      );
+    }
     this.policy = policy;
   }
 
@@ -16,48 +27,29 @@ export class Sandbox {
     const start = performance.now();
     const timeout = this.policy.timeoutMs ?? 30_000;
 
-    // Build unshare flags from policy namespace settings
-    const unshareFlags = this.buildUnshareFlags();
+    // Build the inner shell command. In Phase 1 the helper is not injected;
+    // Task 8 adds `--policy-file` injection for Landlock + cap-drop.
+    const shellCmd = [command, ...args].map(shEscape).join(" ");
 
-    // If we have unshare flags, wrap: unshare [flags] -- command [args]
-    // Otherwise run directly
-    const useUnshare = unshareFlags.length > 0;
+    // Translate SafeClaw policy to sandbox-runtime config
+    const rtConfig = PolicyBuilder.toRuntimeConfig(this.policy);
 
-    // Resolve helper binary
-    // TODO: Re-add SHA-256 integrity verification once builds are reproducible
-    const helperPath = findHelper();
-    const useHelper = helperPath !== undefined;
+    // Wrap via sandbox-runtime (bwrap on Linux, sandbox-exec on macOS)
+    const wrappedCmd = await SandboxManager.wrapWithSandbox(
+      shellCmd,
+      undefined,
+      rtConfig,
+    );
 
-    // Build enforcement metadata
+    const isLinux = process.platform === "linux";
     const enforcement: EnforcementLayers = {
-      namespaces: useUnshare,
-      landlock: useHelper,
-      seccomp: useHelper,
-      capDrop: useHelper,
+      namespaces: isLinux,
+      pivotRoot: isLinux,
+      bindMounts: true,
+      landlock: false,   // Phase 2: re-enabled when helper is injected
+      seccomp: isLinux,  // sandbox-runtime applies seccomp for unix socket blocking on Linux
+      capDrop: false,    // Phase 2: re-enabled when helper is injected
     };
-
-    // Build spawn command and args based on available isolation
-    let spawnCmd: string;
-    let spawnArgs: string[];
-    let stdio: ("ignore" | "pipe")[];
-
-    if (useUnshare && helperPath !== undefined) {
-      spawnCmd = "unshare";
-      spawnArgs = [...unshareFlags, "--", helperPath, "--", command, ...args];
-      stdio = ["ignore", "pipe", "pipe", "pipe"];
-    } else if (useUnshare) {
-      spawnCmd = "unshare";
-      spawnArgs = [...unshareFlags, "--", command, ...args];
-      stdio = ["ignore", "pipe", "pipe"];
-    } else if (helperPath !== undefined) {
-      spawnCmd = helperPath;
-      spawnArgs = ["--", command, ...args];
-      stdio = ["ignore", "pipe", "pipe", "pipe"];
-    } else {
-      spawnCmd = command;
-      spawnArgs = args;
-      stdio = ["ignore", "pipe", "pipe"];
-    }
 
     return new Promise<SandboxResult>((resolve) => {
       const stdoutChunks: Buffer[] = [];
@@ -65,28 +57,14 @@ export class Sandbox {
       let killed = false;
       let killReason: "timeout" | "oom" | "signal" | undefined;
 
-      const proc = spawn(spawnCmd, spawnArgs, {
-        stdio,
+      const proc = spawn("/bin/sh", ["-c", wrappedCmd], {
+        stdio: ["ignore", "pipe", "pipe"],
         detached: true,
       });
-
-      // Write policy JSON to fd 3 when using helper
-      if (useHelper) {
-        const fd3 = proc.stdio[3] as Writable;
-        fd3.on("error", () => {
-          // Ignored: the child may exit before reading fd 3
-        });
-        const policyJson = JSON.stringify({
-          filesystem: this.policy.filesystem,
-          syscalls: this.policy.syscalls,
-        });
-        fd3.end(policyJson);
-      }
 
       const timer = setTimeout(() => {
         killed = true;
         killReason = "timeout";
-        // Kill entire process group (unshare + forked children)
         if (proc.pid !== undefined) {
           try {
             process.kill(-proc.pid, "SIGKILL");
@@ -103,6 +81,8 @@ export class Sandbox {
 
       proc.on("close", (code: number | null) => {
         clearTimeout(timer);
+        // Clean up bwrap leftover mount points (no-op on macOS)
+        SandboxManager.cleanupAfterCommand();
         resolve({
           exitCode: code ?? 1,
           stdout: Buffer.concat(stdoutChunks).toString(),
@@ -116,6 +96,7 @@ export class Sandbox {
 
       proc.on("error", (err: Error) => {
         clearTimeout(timer);
+        SandboxManager.cleanupAfterCommand();
         resolve({
           exitCode: 1,
           stdout: "",
@@ -130,17 +111,5 @@ export class Sandbox {
 
   getPolicy(): SandboxPolicy {
     return structuredClone(this.policy);
-  }
-
-  private buildUnshareFlags(): string[] {
-    const flags: string[] = [];
-    const ns = this.policy.namespaces;
-
-    if (ns.pid) flags.push("--pid", "--fork");
-    if (ns.net) flags.push("--net");
-    if (ns.mnt) flags.push("--mount");
-    if (ns.user) flags.push("--user", "--map-root-user");
-
-    return flags;
   }
 }

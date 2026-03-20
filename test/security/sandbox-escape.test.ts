@@ -22,12 +22,14 @@ const UNSUPPORTED_CAPS: KernelCapabilities = {
   landlock: { supported: false, abiVersion: 0 },
   seccomp: { supported: false },
   namespaces: { user: false, pid: false, net: false, mnt: false },
+  bwrap: { available: false, path: undefined, version: undefined },
 };
 
 const FULL_CAPS: KernelCapabilities = {
   landlock: { supported: true, abiVersion: 3 },
   seccomp: { supported: true },
   namespaces: { user: true, pid: true, net: true, mnt: true },
+  bwrap: { available: true, path: "/usr/bin/bwrap", version: "0.9.0" },
 };
 
 const mockAssert = vi.fn<() => KernelCapabilities>();
@@ -43,6 +45,14 @@ vi.mock("../../packages/sandbox/src/detect.js", () => ({
 
 vi.mock("../../packages/sandbox/src/helper.js", () => ({
   findHelper: () => undefined,
+}));
+
+vi.mock("@anthropic-ai/sandbox-runtime", () => ({
+  SandboxManager: {
+    isSandboxingEnabled: () => true,
+    wrapWithSandbox: async (cmd: string) => cmd,
+    cleanupAfterCommand: () => undefined,
+  },
 }));
 
 const { Sandbox } = await import("@safeclaw/sandbox");
@@ -114,7 +124,7 @@ describe("Sandbox escape prevention", () => {
 
       const sandbox = new Sandbox(DEFAULT_POLICY);
       const policy = sandbox.getPolicy();
-      (policy as SandboxPolicy).network = "filtered";
+      (policy as SandboxPolicy).network = "localhost";
 
       const policyAgain = sandbox.getPolicy();
       expect(policyAgain.network).toBe("none");
