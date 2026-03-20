@@ -81,15 +81,22 @@ function print(output: NodeJS.WritableStream, message: string): void {
  * an async `ask` method that writes a prompt and returns the next line.
  */
 class LineReader {
-  private readonly rl: ReadlineInterface;
+  private rl: ReadlineInterface;
   private readonly output: NodeJS.WritableStream;
+  private readonly input: NodeJS.ReadableStream;
   private readonly buffer: string[] = [];
   private waiting: ((line: string) => void) | null = null;
+  /** Snapshot of buffer.length taken at closeForRawRead(), used to trim leaked entries. */
+  private bufferLengthBeforeClose = 0;
 
-  constructor(rl: ReadlineInterface, output: NodeJS.WritableStream) {
+  constructor(rl: ReadlineInterface, output: NodeJS.WritableStream, input: NodeJS.ReadableStream) {
     this.rl = rl;
     this.output = output;
+    this.input = input;
+    this.attachLineHandler();
+  }
 
+  private attachLineHandler(): void {
     this.rl.on("line", (line: string) => {
       if (this.waiting) {
         const resolve = this.waiting;
@@ -110,6 +117,34 @@ class LineReader {
     return new Promise<string>((resolve) => {
       this.waiting = resolve;
     });
+  }
+
+  /**
+   * Close the readline interface before raw-mode passphrase reads.
+   * readline.pause() is insufficient because readline auto-resumes itself
+   * when data arrives while paused, causing passphrase characters to leak
+   * into the line buffer.  Closing the interface prevents that.
+   */
+  closeForRawRead(): void {
+    this.bufferLengthBeforeClose = this.buffer.length;
+    this.rl.close();
+  }
+
+  /**
+   * Recreate the readline interface after a raw-mode passphrase read.
+   * Trims only the entries that leaked into the buffer during the read
+   * (i.e. entries added after closeForRawRead()), preserving any lines
+   * that were already buffered before the close.
+   */
+  reopenAfterRawRead(): void {
+    this.rl = createInterface({ input: this.input, output: this.output, terminal: false });
+    this.attachLineHandler();
+    // Resume so the new readline can receive subsequent input.
+    (this.input as NodeJS.ReadableStream & { resume(): void }).resume();
+    // Trim any passphrase characters that leaked through while readline was
+    // closed (readline might still have been processing data if its data
+    // listener was not removed by close()).
+    this.buffer.splice(this.bufferLengthBeforeClose);
   }
 
   pause(): void {
@@ -238,24 +273,19 @@ async function createVaultStep(
     keySource: KeySource;
     saltPath?: string;
   }> => {
-    // Pause readline so it doesn't consume passphrase keystrokes
-    reader.pause();
+    // Close readline so it cannot auto-resume and consume passphrase keystrokes.
+    reader.closeForRawRead();
     let passphrase: string;
+    let confirm: string;
     try {
       for (;;) {
         passphrase = await readPassphraseFn("Enter passphrase: ", input, output);
         if (passphrase.length >= 8) break;
         print(output, "  Passphrase must be at least 8 characters. Try again.");
       }
-    } finally {
-      reader.resume();
-    }
-    reader.pause();
-    let confirm: string;
-    try {
       confirm = await readPassphraseFn("Confirm passphrase: ", input, output);
     } finally {
-      reader.resume();
+      reader.reopenAfterRawRead();
     }
 
     if (passphrase !== confirm) {
@@ -376,7 +406,7 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
   } = options;
 
   const rl = createInterface({ input, output, terminal: false });
-  const reader = new LineReader(rl, output);
+  const reader = new LineReader(rl, output, input);
 
   try {
     print(output, "SafeClaw Onboarding Wizard");
@@ -422,24 +452,18 @@ export async function runOnboarding(options: OnboardOptions): Promise<OnboardRes
     print(output, "=== Step 6: Configure Model Providers (Optional) ===\n");
     print(output, "  Press Enter to skip any provider you don't want to configure.\n");
 
-    reader.pause();
+    reader.closeForRawRead();
     let openaiKey: string;
     let anthropicKey: string;
     try {
       openaiKey = await readPass("OpenAI API key (Enter to skip): ", input, output);
+      anthropicKey = await readPass("Anthropic API key (Enter to skip): ", input, output);
     } finally {
-      reader.resume();
+      reader.reopenAfterRawRead();
     }
     if (openaiKey.trim()) {
       vault.set("openai_api_key", openaiKey.trim());
       print(output, "  OpenAI API key stored.");
-    }
-
-    reader.pause();
-    try {
-      anthropicKey = await readPass("Anthropic API key (Enter to skip): ", input, output);
-    } finally {
-      reader.resume();
     }
     if (anthropicKey.trim()) {
       vault.set("anthropic_api_key", anthropicKey.trim());
