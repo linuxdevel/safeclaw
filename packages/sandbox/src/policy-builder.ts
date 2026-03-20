@@ -1,3 +1,4 @@
+import { lstatSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
@@ -90,7 +91,8 @@ export class PolicyBuilder {
       .filter((r) => r.access === "readwrite" || r.access === "readwriteexecute")
       .map((r) => r.path);
 
-    // Always deny reads to credential/secret directories.
+    // Always deny reads to credential/secret directories that exist.
+    // Non-existent paths are skipped — bwrap cannot bind-mount over them.
     // sandbox-runtime also enforces mandatory deny on dangerous files (.bashrc,
     // .git/hooks, etc.) regardless of this config — these are complementary.
     const home = homedir();
@@ -102,7 +104,13 @@ export class PolicyBuilder {
       `${home}/.docker`,
       `${home}/.gcloud`,
       `${home}/.azure`,
-    ];
+    ].filter((p) => {
+      try {
+        return lstatSync(p).isDirectory();
+      } catch {
+        return false;
+      }
+    });
 
     // ── Network ───────────────────────────────────────────────────────
     const network = buildNetworkConfig(policy.network);

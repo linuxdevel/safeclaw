@@ -9,3 +9,5 @@ coverage/
 .turbo/
 bundle/
 .opencode/
+.worktrees/
+tmp/

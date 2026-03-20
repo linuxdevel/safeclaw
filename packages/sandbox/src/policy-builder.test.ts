@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { homedir } from "node:os";
 import { PolicyBuilder } from "./policy-builder.js";
 import type { SandboxPolicy, PathRule } from "./types.js";
 import { DEFAULT_POLICY } from "./types.js";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
+
+// Mock lstatSync so toRuntimeConfig() tests are deterministic regardless of
+// which credential directories actually exist on the test machine.
+vi.mock("node:fs", () => ({
+  lstatSync: () => ({ isDirectory: () => true }),
+}));
 
 describe("PolicyBuilder", () => {
   describe("addReadExecute()", () => {

@@ -30,6 +30,7 @@ vi.mock("@anthropic-ai/sandbox-runtime", () => ({
 vi.mock("node:fs", () => ({
   writeFileSync: (...args: unknown[]) => mockWriteFileSync(...args),
   rmSync: (...args: unknown[]) => mockRmSync(...args),
+  lstatSync: () => ({ isDirectory: () => false }),
 }));
 
 const { Sandbox } = await import("./sandbox.js");
