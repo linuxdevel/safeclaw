@@ -10,7 +10,15 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundle_target: linux-x64
+          - os: macos-15
+            bundle_target: darwin-arm64
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
@@ -35,24 +43,39 @@ jobs:
 
       - name: Build and bundle
         run: pnpm bundle
+        env:
+          BUNDLE_TARGET: ${{ matrix.bundle_target }}
 
       - name: Install musl-tools
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build native sandbox helper
+        if: runner.os == 'Linux'
         run: make -C native
 
-      - name: Prepare native release assets
+      - name: Prepare release assets (Linux)
+        if: runner.os == 'Linux'
         run: |
           cp native/safeclaw-sandbox-helper safeclaw-sandbox-helper-linux-x86_64
-          sha256sum safeclaw-sandbox-helper-linux-x86_64 > SHA256SUMS
+          sha256sum safeclaw-${{ matrix.bundle_target }}.tar.gz safeclaw-sandbox-helper-linux-x86_64 > SHA256SUMS
 
-      - name: Create GitHub release
+      - name: Upload release assets (Linux)
+        if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           files: |
-            safeclaw-linux-x64.tar.gz
+            safeclaw-${{ matrix.bundle_target }}.tar.gz
             safeclaw-sandbox-helper-linux-x86_64
             SHA256SUMS
           generate_release_notes: true
+
+      - name: Upload release assets (macOS)
+        if: runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            safeclaw-${{ matrix.bundle_target }}.tar.gz
+          generate_release_notes: false

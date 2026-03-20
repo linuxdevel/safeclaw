@@ -4,8 +4,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+BUNDLE_TARGET="${BUNDLE_TARGET:-linux-x64}"
+TARBALL="safeclaw-${BUNDLE_TARGET}.tar.gz"
+
 echo "==> Cleaning previous build artifacts..."
-rm -rf bundle/ safeclaw-linux-x64.tar.gz
+rm -rf bundle/ safeclaw-*.tar.gz
 pnpm -r exec rm -rf dist
 
 echo "==> Installing dependencies..."
@@ -51,10 +54,10 @@ echo "==> Installing production dependencies in bundle..."
 (cd bundle/safeclaw && pnpm install --prod --frozen-lockfile)
 
 echo "==> Creating tarball..."
-tar czf safeclaw-linux-x64.tar.gz -C bundle safeclaw
+tar czf "$TARBALL" -C bundle safeclaw
 
-TARBALL_SIZE="$(du -h safeclaw-linux-x64.tar.gz | cut -f1)"
+TARBALL_SIZE="$(du -h "$TARBALL" | cut -f1)"
 echo ""
 echo "Bundle complete:"
-echo "  Path: $(pwd)/safeclaw-linux-x64.tar.gz"
+echo "  Path: $(pwd)/$TARBALL"
 echo "  Size: $TARBALL_SIZE"

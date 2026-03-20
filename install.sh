@@ -44,30 +44,41 @@ for arg in "$@"; do
 done
 
 # ---------------------------------------------------------------------------
-# OS check — Linux only for v1
+# OS and architecture detection
 # ---------------------------------------------------------------------------
 OS="$(uname -s)"
-if [ "$OS" != "Linux" ]; then
-  error "Error: SafeClaw currently supports Linux only."
-  error "Detected OS: $OS"
-  error "macOS and Windows support is planned for a future release."
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Architecture detection
-# ---------------------------------------------------------------------------
 RAW_ARCH="$(uname -m)"
-case "$RAW_ARCH" in
-  x86_64)  ARCH="x64"   ;;
-  aarch64) ARCH="arm64"  ;;
+
+case "$OS" in
+  Linux)
+    case "$RAW_ARCH" in
+      x86_64)  PLATFORM="linux-x64"  ;;
+      aarch64) PLATFORM="linux-arm64" ;;
+      *)
+        error "Error: Unsupported architecture: $RAW_ARCH"
+        error "SafeClaw supports x86_64 and aarch64 on Linux."
+        exit 1
+        ;;
+    esac
+    ;;
+  Darwin)
+    case "$RAW_ARCH" in
+      arm64)   PLATFORM="darwin-arm64" ;;
+      x86_64)  PLATFORM="darwin-x64"   ;;
+      *)
+        error "Error: Unsupported architecture: $RAW_ARCH"
+        error "SafeClaw supports arm64 and x86_64 on macOS."
+        exit 1
+        ;;
+    esac
+    ;;
   *)
-    error "Error: Unsupported architecture: $RAW_ARCH"
-    error "SafeClaw supports x86_64 (x64) and aarch64 (arm64)."
+    error "Error: Unsupported OS: $OS"
+    error "SafeClaw supports Linux and macOS."
     exit 1
     ;;
 esac
-info "Detected architecture: $RAW_ARCH (mapped to $ARCH)"
+info "Detected platform: $OS/$RAW_ARCH (mapped to $PLATFORM)"
 
 # ---------------------------------------------------------------------------
 # Node.js version check (>= 22)
@@ -82,10 +93,16 @@ if ! command -v node &>/dev/null; then
   error "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
   error "  nvm install $MIN_NODE_VERSION"
   error ""
-  error "  # Using NodeSource:"
-  error "  curl -fsSL https://deb.nodesource.com/setup_${MIN_NODE_VERSION}.x | sudo -E bash -"
-  error "  sudo apt-get install -y nodejs"
-  error ""
+  if [ "$OS" = "Darwin" ]; then
+    error "  # Using Homebrew:"
+    error "  brew install node@$MIN_NODE_VERSION"
+    error ""
+  else
+    error "  # Using NodeSource (Linux):"
+    error "  curl -fsSL https://deb.nodesource.com/setup_${MIN_NODE_VERSION}.x | sudo -E bash -"
+    error "  sudo apt-get install -y nodejs"
+    error ""
+  fi
   error "  # Using fnm:"
   error "  curl -fsSL https://fnm.vercel.app/install | bash"
   error "  fnm install $MIN_NODE_VERSION"
@@ -173,7 +190,7 @@ info "Latest release: $TAG"
 # ---------------------------------------------------------------------------
 # Download tarball
 # ---------------------------------------------------------------------------
-ASSET_NAME="safeclaw-linux-${ARCH}.tar.gz"
+ASSET_NAME="safeclaw-${PLATFORM}.tar.gz"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
 TMPDIR="$(mktemp -d)"
 TARBALL="$TMPDIR/$ASSET_NAME"
@@ -197,36 +214,39 @@ mkdir -p "$INSTALL_DIR"
 tar xzf "$TARBALL" -C "$INSTALL_DIR" --strip-components=1
 
 # ---------------------------------------------------------------------------
-# Download sandbox helper binary (optional — sandboxing works without it)
+# Download sandbox helper binary (Linux only)
 # ---------------------------------------------------------------------------
-HELPER_ASSET="safeclaw-sandbox-helper-linux-${RAW_ARCH}"
-HELPER_URL="https://github.com/$REPO/releases/download/$TAG/$HELPER_ASSET"
-SHA_URL="https://github.com/$REPO/releases/download/$TAG/SHA256SUMS"
+if [ "$OS" = "Linux" ]; then
+  HELPER_ASSET="safeclaw-sandbox-helper-linux-${RAW_ARCH}"
+  HELPER_URL="https://github.com/$REPO/releases/download/$TAG/$HELPER_ASSET"
+  SHA_URL="https://github.com/$REPO/releases/download/$TAG/SHA256SUMS"
 
-info "Downloading sandbox helper..."
-HELPER_DL="$TMPDIR/$HELPER_ASSET"
-SHA_DL="$TMPDIR/SHA256SUMS"
+  info "Downloading sandbox helper..."
+  HELPER_DL="$TMPDIR/$HELPER_ASSET"
+  SHA_DL="$TMPDIR/SHA256SUMS"
 
-if curl -fSL --progress-bar -o "$HELPER_DL" "$HELPER_URL" 2>/dev/null && \
-   curl -fsSL -o "$SHA_DL" "$SHA_URL" 2>/dev/null; then
+  if curl -fSL --progress-bar -o "$HELPER_DL" "$HELPER_URL" 2>/dev/null && \
+     curl -fsSL -o "$SHA_DL" "$SHA_URL" 2>/dev/null; then
 
-    # Verify SHA-256 checksum
-    EXPECTED_HASH="$(grep "$HELPER_ASSET" "$SHA_DL" | awk '{print $1}')"
-    ACTUAL_HASH="$(sha256sum "$HELPER_DL" | awk '{print $1}')"
+      EXPECTED_HASH="$(grep "$HELPER_ASSET" "$SHA_DL" | awk '{print $1}')"
+      ACTUAL_HASH="$(sha256sum "$HELPER_DL" | awk '{print $1}')"
 
-    if [ -n "$EXPECTED_HASH" ] && [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
-        mkdir -p "$BIN_DIR"
-        install -m755 "$HELPER_DL" "$BIN_DIR/safeclaw-sandbox-helper"
-        success "Sandbox helper installed (SHA-256 verified)."
-    else
-        warn "Warning: Sandbox helper checksum mismatch — skipping."
-        warn "Expected: $EXPECTED_HASH"
-        warn "Actual:   $ACTUAL_HASH"
-        warn "SafeClaw will run with namespace-only sandboxing."
-    fi
+      if [ -n "$EXPECTED_HASH" ] && [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
+          mkdir -p "$BIN_DIR"
+          install -m755 "$HELPER_DL" "$BIN_DIR/safeclaw-sandbox-helper"
+          success "Sandbox helper installed (SHA-256 verified)."
+      else
+          warn "Warning: Sandbox helper checksum mismatch — skipping."
+          warn "Expected: $EXPECTED_HASH"
+          warn "Actual:   $ACTUAL_HASH"
+          warn "SafeClaw will run with namespace-only sandboxing."
+      fi
+  else
+      warn "Sandbox helper not available for $RAW_ARCH — skipping."
+      warn "SafeClaw will run with namespace-only sandboxing."
+  fi
 else
-    warn "Sandbox helper not available for $RAW_ARCH — skipping."
-    warn "SafeClaw will run with namespace-only sandboxing."
+  info "Sandbox helper is Linux-only — skipping on macOS."
 fi
 
 # ---------------------------------------------------------------------------
@@ -272,6 +292,13 @@ else
     if [ -f "$HOME/.zshrc" ] && ! grep -qF '.safeclaw/bin' "$HOME/.zshrc" 2>/dev/null; then
       printf '\n# SafeClaw\n%s\n' "$PATH_LINE" >> "$HOME/.zshrc"
       MODIFIED_CONFIGS+=("~/.zshrc")
+    fi
+    # ~/.zprofile — login shells on macOS (Terminal.app opens login shells)
+    if [ "$OS" = "Darwin" ]; then
+      if [ -f "$HOME/.zprofile" ] && ! grep -qF '.safeclaw/bin' "$HOME/.zprofile" 2>/dev/null; then
+        printf '\n# SafeClaw\n%s\n' "$PATH_LINE" >> "$HOME/.zprofile"
+        MODIFIED_CONFIGS+=("~/.zprofile")
+      fi
     fi
   fi
 
