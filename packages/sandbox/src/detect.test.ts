@@ -1,150 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as fs from "node:fs";
 
-vi.mock("node:fs");
+const mockIsSupportedPlatform = vi.fn<() => boolean>();
+const mockCheckDeps = vi.fn<() => { errors: string[]; warnings: string[] }>();
+const mockWhichBwrap = vi.fn<() => string>();
 
-const mockedFs = vi.mocked(fs);
+vi.mock("@anthropic-ai/sandbox-runtime", () => ({
+  SandboxManager: {
+    isSupportedPlatform: mockIsSupportedPlatform,
+    checkDependencies: mockCheckDeps,
+  },
+}));
 
-function mockKernel(release: string, status: string, nsFiles: string[]): void {
-  mockedFs.readFileSync.mockImplementation((path: fs.PathOrFileDescriptor) => {
-    if (path === "/proc/sys/kernel/osrelease") return release;
-    if (path === "/proc/self/status") return status;
-    throw new Error(`Unexpected readFileSync: ${String(path)}`);
-  });
-  mockedFs.existsSync.mockImplementation((path: fs.PathLike) =>
-    nsFiles.includes(String(path)),
-  );
-}
+vi.mock("node:child_process", () => ({
+  execFileSync: mockWhichBwrap,
+}));
 
-// Import after mock setup
-const { detectKernelCapabilities, assertSandboxSupported } = await import(
-  "./detect.js"
-);
+const { detectKernelCapabilities, assertSandboxSupported } = await import("./detect.js");
 
-describe("detectKernelCapabilities", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+describe("detectKernelCapabilities()", () => {
+  beforeEach(() => vi.clearAllMocks());
 
-  it("detects Landlock support on kernel 6.1.0 with ABI v2", () => {
-    mockKernel("6.1.0-generic\n", "Seccomp:\t2\n", [
-      "/proc/self/ns/user",
-      "/proc/self/ns/pid",
-      "/proc/self/ns/net",
-      "/proc/self/ns/mnt",
-    ]);
-
+  it("reports bwrap available when which bwrap succeeds", () => {
+    mockWhichBwrap.mockReturnValue("/usr/bin/bwrap");
     const caps = detectKernelCapabilities();
-    expect(caps.landlock.supported).toBe(true);
-    expect(caps.landlock.abiVersion).toBe(2);
+    expect(caps.bwrap.available).toBe(true);
+    expect(caps.bwrap.path).toBe("/usr/bin/bwrap");
   });
 
-  it("detects Landlock ABI v3 on kernel 6.2.0", () => {
-    mockKernel("6.2.0\n", "Seccomp:\t2\n", []);
-
+  it("reports bwrap unavailable when which bwrap fails", () => {
+    mockWhichBwrap.mockImplementation(() => { throw new Error("not found"); });
     const caps = detectKernelCapabilities();
-    expect(caps.landlock.supported).toBe(true);
-    expect(caps.landlock.abiVersion).toBe(3);
-  });
-
-  it("detects Landlock ABI v1 on kernel 5.13.0", () => {
-    mockKernel("5.13.0\n", "Seccomp:\t2\n", []);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.landlock.supported).toBe(true);
-    expect(caps.landlock.abiVersion).toBe(1);
-  });
-
-  it("reports no Landlock support on kernel 5.12.0", () => {
-    mockKernel("5.12.0\n", "Seccomp:\t2\n", []);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.landlock.supported).toBe(false);
-    expect(caps.landlock.abiVersion).toBe(0);
-  });
-
-  it("detects seccomp from /proc/self/status containing Seccomp: 2", () => {
-    mockKernel("6.1.0\n", "Name:\tnode\nSeccomp:\t2\nGroups:\t", []);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.seccomp.supported).toBe(true);
-  });
-
-  it("detects seccomp mode 1 as supported", () => {
-    mockKernel("6.1.0\n", "Seccomp:\t1\n", []);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.seccomp.supported).toBe(true);
-  });
-
-  it("detects no seccomp when Seccomp: 0", () => {
-    mockKernel("6.1.0\n", "Seccomp:\t0\n", []);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.seccomp.supported).toBe(false);
-  });
-
-  it("detects missing namespace support when /proc/self/ns/user does not exist", () => {
-    mockKernel("6.1.0\n", "Seccomp:\t2\n", [
-      "/proc/self/ns/pid",
-      "/proc/self/ns/net",
-      "/proc/self/ns/mnt",
-    ]);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.namespaces.user).toBe(false);
-    expect(caps.namespaces.pid).toBe(true);
-    expect(caps.namespaces.net).toBe(true);
-    expect(caps.namespaces.mnt).toBe(true);
-  });
-
-  it("detects all namespaces present", () => {
-    mockKernel("6.1.0\n", "Seccomp:\t2\n", [
-      "/proc/self/ns/user",
-      "/proc/self/ns/pid",
-      "/proc/self/ns/net",
-      "/proc/self/ns/mnt",
-    ]);
-
-    const caps = detectKernelCapabilities();
-    expect(caps.namespaces.user).toBe(true);
-    expect(caps.namespaces.pid).toBe(true);
-    expect(caps.namespaces.net).toBe(true);
-    expect(caps.namespaces.mnt).toBe(true);
+    expect(caps.bwrap.available).toBe(false);
+    expect(caps.bwrap.path).toBeUndefined();
   });
 });
 
-describe("assertSandboxSupported", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("assertSandboxSupported()", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("does not throw when platform is supported and deps are OK", () => {
+    mockIsSupportedPlatform.mockReturnValue(true);
+    mockCheckDeps.mockReturnValue({ errors: [], warnings: [] });
+    mockWhichBwrap.mockReturnValue("/usr/bin/bwrap");
+    expect(() => assertSandboxSupported()).not.toThrow();
   });
 
-  it("throws if kernel is 4.0.0 (no Landlock)", () => {
-    mockKernel("4.0.0\n", "Seccomp:\t0\n", []);
-
-    expect(() => assertSandboxSupported()).toThrow(
-      /Missing kernel features.*Landlock/,
-    );
+  it("throws when platform is not supported", () => {
+    mockIsSupportedPlatform.mockReturnValue(false);
+    mockCheckDeps.mockReturnValue({ errors: [], warnings: [] });
+    expect(() => assertSandboxSupported()).toThrow(/platform/i);
   });
 
-  it("throws listing all missing features", () => {
-    mockKernel("4.0.0\n", "Seccomp:\t0\n", ["/proc/self/ns/mnt"]);
-
-    expect(() => assertSandboxSupported()).toThrow(
-      /Landlock.*seccomp-BPF.*User namespaces.*PID namespaces/,
-    );
-  });
-
-  it("returns capabilities when all features present", () => {
-    mockKernel("6.1.0\n", "Seccomp:\t2\n", [
-      "/proc/self/ns/user",
-      "/proc/self/ns/pid",
-      "/proc/self/ns/net",
-      "/proc/self/ns/mnt",
-    ]);
-
-    const caps = assertSandboxSupported();
-    expect(caps.landlock.supported).toBe(true);
-    expect(caps.seccomp.supported).toBe(true);
+  it("throws when sandbox-runtime deps are missing", () => {
+    mockIsSupportedPlatform.mockReturnValue(true);
+    mockCheckDeps.mockReturnValue({ errors: ["bubblewrap not found"], warnings: [] });
+    expect(() => assertSandboxSupported()).toThrow(/bubblewrap not found/);
   });
 });

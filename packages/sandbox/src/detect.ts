@@ -1,5 +1,78 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import type { KernelCapabilities } from "./types.js";
+
+/**
+ * Probes system capabilities relevant to sandboxing.
+ * Returns KernelCapabilities with bwrap probe on Linux; on macOS the
+ * bwrap fields are always unavailable (macOS uses sandbox-exec instead).
+ */
+export function detectKernelCapabilities(): KernelCapabilities {
+  let bwrapPath: string | undefined;
+  let bwrapVersion: string | undefined;
+
+  try {
+    bwrapPath = execFileSync("which", ["bwrap"], { encoding: "utf8" }).trim();
+    try {
+      bwrapVersion = execFileSync("bwrap", ["--version"], { encoding: "utf8" })
+        .trim()
+        .split("\n")[0];
+    } catch {
+      // version flag not supported or bwrap not runnable — path is still valid
+    }
+  } catch {
+    // bwrap not on PATH
+  }
+
+  // Landlock / seccomp / namespace detection is Linux-only; on macOS these
+  // are undefined/false since sandbox-runtime uses sandbox-exec there.
+  const isLinux = process.platform === "linux";
+
+  return {
+    landlock: {
+      supported: isLinux ? detectLandlock() : false,
+      abiVersion: isLinux ? detectLandlockAbi() : 0,
+    },
+    seccomp: { supported: isLinux ? detectSeccomp() : false },
+    namespaces: {
+      user: isLinux ? existsSync("/proc/self/ns/user") : false,
+      pid:  isLinux ? existsSync("/proc/self/ns/pid")  : false,
+      net:  isLinux ? existsSync("/proc/self/ns/net")  : false,
+      mnt:  isLinux ? existsSync("/proc/self/ns/mnt")  : false,
+    },
+    bwrap: {
+      available: bwrapPath !== undefined,
+      path: bwrapPath,
+      version: bwrapVersion,
+    },
+  };
+}
+
+/**
+ * Throws a descriptive error if the current platform and dependencies
+ * do not support sandbox-runtime isolation.
+ */
+export function assertSandboxSupported(): KernelCapabilities {
+  if (!SandboxManager.isSupportedPlatform()) {
+    throw new Error(
+      `SafeClaw sandbox is not supported on this platform (${process.platform}). ` +
+        `Supported: Linux (kernel ≥ 5.13, bubblewrap, socat, ripgrep) and macOS.`,
+    );
+  }
+
+  const deps = SandboxManager.checkDependencies();
+  if (deps.errors.length > 0) {
+    throw new Error(
+      `Sandbox dependencies missing: ${deps.errors.join(", ")}. ` +
+        `On Linux install: apt install bubblewrap socat ripgrep`,
+    );
+  }
+
+  return detectKernelCapabilities();
+}
+
+// ── Linux helpers ──────────────────────────────────────────────────────
 
 const LANDLOCK_MIN_KERNEL: [number, number] = [5, 13];
 
@@ -8,52 +81,37 @@ function parseKernelVersion(release: string): [number, number] {
   return [parseInt(parts[0] ?? "0", 10), parseInt(parts[1] ?? "0", 10)];
 }
 
-function kernelAtLeast(release: string, min: [number, number]): boolean {
-  const [major, minor] = parseKernelVersion(release);
-  return major > min[0] || (major === min[0] && minor >= min[1]);
-}
-
-export function detectKernelCapabilities(): KernelCapabilities {
-  const release = readFileSync("/proc/sys/kernel/osrelease", "utf8");
-  const status = readFileSync("/proc/self/status", "utf8");
-
-  const landlockSupported = kernelAtLeast(release, LANDLOCK_MIN_KERNEL);
-  let landlockAbi = 0;
-  if (landlockSupported) {
+function detectLandlock(): boolean {
+  try {
+    const release = readFileSync("/proc/sys/kernel/osrelease", "utf8");
     const [major, minor] = parseKernelVersion(release);
-    if (major > 6 || (major === 6 && minor >= 2)) landlockAbi = 3;
-    else if (major > 5 || (major === 5 && minor >= 19)) landlockAbi = 2;
-    else landlockAbi = 1;
+    return (
+      major > LANDLOCK_MIN_KERNEL[0] ||
+      (major === LANDLOCK_MIN_KERNEL[0] && minor >= LANDLOCK_MIN_KERNEL[1])
+    );
+  } catch {
+    return false;
   }
-
-  const seccompSupported = /Seccomp:\s*[12]/.test(status);
-
-  return {
-    landlock: { supported: landlockSupported, abiVersion: landlockAbi },
-    seccomp: { supported: seccompSupported },
-    namespaces: {
-      user: existsSync("/proc/self/ns/user"),
-      pid: existsSync("/proc/self/ns/pid"),
-      net: existsSync("/proc/self/ns/net"),
-      mnt: existsSync("/proc/self/ns/mnt"),
-    },
-  };
 }
 
-export function assertSandboxSupported(): KernelCapabilities {
-  const caps = detectKernelCapabilities();
-  const missing: string[] = [];
-  if (!caps.landlock.supported)
-    missing.push("Landlock (requires kernel >= 5.13)");
-  if (!caps.seccomp.supported) missing.push("seccomp-BPF");
-  if (!caps.namespaces.user) missing.push("User namespaces");
-  if (!caps.namespaces.pid) missing.push("PID namespaces");
-
-  if (missing.length > 0) {
-    throw new Error(
-      `SafeClaw requires mandatory sandbox support. Missing kernel features: ${missing.join(", ")}. ` +
-        `SafeClaw v1 is Linux-only and requires a modern kernel (>= 5.13).`,
-    );
+function detectLandlockAbi(): number {
+  try {
+    const release = readFileSync("/proc/sys/kernel/osrelease", "utf8");
+    const [major, minor] = parseKernelVersion(release);
+    if (major > 6 || (major === 6 && minor >= 2)) return 3;
+    if (major > 5 || (major === 5 && minor >= 19)) return 2;
+    if (major > 5 || (major === 5 && minor >= 13)) return 1;
+    return 0;
+  } catch {
+    return 0;
   }
-  return caps;
+}
+
+function detectSeccomp(): boolean {
+  try {
+    const status = readFileSync("/proc/self/status", "utf8");
+    return /Seccomp:\s*[12]/.test(status);
+  } catch {
+    return false;
+  }
 }
