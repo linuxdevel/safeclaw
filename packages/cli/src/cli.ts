@@ -10,6 +10,7 @@ import { bootstrapAgent } from "./commands/bootstrap.js";
 import { runAudit } from "./commands/audit.js";
 import { runDoctor } from "./commands/doctor.js";
 import { setupChat } from "./commands/chat.js";
+import { runChangeModel } from "./commands/change-model.js";
 import { Gateway, DEFAULT_GATEWAY_CONFIG } from "@safeclaw/gateway";
 import { WebChatAdapter } from "@safeclaw/webchat";
 import { listCopilotModels, DEFAULT_AGENT_CONFIG } from "@safeclaw/core";
@@ -27,6 +28,7 @@ function printUsage(output: NodeJS.WritableStream): void {
     "Commands:",
     "  chat              Start an interactive chat session (default)",
     "  onboard           Run the onboarding wizard",
+    "  changemodel       Change the active model",
     "  audit [--json]    Run a security audit of the running instance",
     "  serve|server      Start the gateway HTTP server + webchat",
     "  doctor            Run system diagnostics and health checks",
@@ -85,6 +87,16 @@ async function runOnboard(): Promise<void> {
     output: process.stdout,
     vaultPath: path.join(safeclawDir, "vault.json"),
     listModels: listCopilotModels,
+  });
+}
+
+async function runChangeModelCommand(): Promise<void> {
+  const safeclawDir = path.join(os.homedir(), ".safeclaw");
+  const vaultPath = path.join(safeclawDir, "vault.json");
+  await runChangeModel({
+    input: process.stdin,
+    output: process.stdout,
+    vaultPath,
   });
 }
 
@@ -225,6 +237,11 @@ async function main(): Promise<void> {
 
     case "onboard":
       await runOnboard();
+      break;
+
+    case "changemodel":
+    case "change-model":
+      await runChangeModelCommand();
       break;
 
     case "audit": {
