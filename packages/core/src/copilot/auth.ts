@@ -42,6 +42,9 @@ export async function requestDeviceCode(
 /** Timeout for individual auth fetch requests (ms). */
 const AUTH_FETCH_TIMEOUT_MS = 30_000;
 
+/** Maximum polling interval for device flow (seconds). */
+const MAX_POLL_INTERVAL_S = 30;
+
 /**
  * Poll GitHub for the OAuth token after the user has authorized the device.
  * Retries on "authorization_pending" and "slow_down" errors, respecting the
@@ -86,7 +89,7 @@ export async function pollForToken(
       }
       if (data.error === "slow_down") {
         // GitHub requires increasing the interval by 5 s on slow_down
-        currentInterval += 5;
+        currentInterval = Math.min(currentInterval + 5, MAX_POLL_INTERVAL_S);
         await delay(currentInterval * 1000);
         continue;
       }

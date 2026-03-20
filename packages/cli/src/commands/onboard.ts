@@ -196,6 +196,8 @@ async function authenticate(
 
     const token = await poll(config, deviceCode.device_code, deviceCode.interval);
 
+    print(output, "  Authorization confirmed. Fetching Copilot token...");
+
     await getCopilot(token.access_token);
 
     print(output, "  Authenticated successfully.\n");
