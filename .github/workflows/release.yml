@@ -43,7 +43,7 @@ jobs:
           git clone --depth 1 https://github.com/linuxdevel/sandbox-runtime /tmp/sandbox-runtime
           npm --prefix /tmp/sandbox-runtime install
           npm --prefix /tmp/sandbox-runtime run build
-          SRT_DIR=$(node -e "console.log(require.resolve('@anthropic-ai/sandbox-runtime/package.json').replace('/package.json',''))")
+          SRT_DIR=$(find node_modules/.pnpm -maxdepth 4 -path "*/@anthropic-ai/sandbox-runtime" -type d | head -1)
           cp -r /tmp/sandbox-runtime/dist "$SRT_DIR/"
 
       - name: Run tests
