@@ -94,4 +94,106 @@ describe("runChangeModel", () => {
     });
     await expect(runChangeModel(deps)).rejects.toThrow("Failed to write config");
   });
+
+  it("selects the first model on Enter with no arrow keys", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({ input: makeInput("\r"), writeConfig });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "claude-sonnet-4");
+  });
+
+  it("selects the 3rd model after Down Down Enter", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({ input: makeInput("\x1b[B\x1b[B\r"), writeConfig });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "gpt-5.3-codex");
+  });
+
+  it("wraps from index 0 to last on Up", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({ input: makeInput("\x1b[A\r"), writeConfig });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "gpt-5.3-codex");
+  });
+
+  it("wraps from last to index 0 on Down", async () => {
+    const writeConfig = vi.fn();
+    // Down×3 with 3 models: 0→1→2→0 (wrap), then Enter
+    const deps = createDeps({ input: makeInput("\x1b[B\x1b[B\x1b[B\r"), writeConfig });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "claude-sonnet-4");
+  });
+
+  it("returns normally without calling writeConfig on Ctrl+C", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({ input: makeInput("\x03"), writeConfig });
+    await runChangeModel(deps);
+    expect(writeConfig).not.toHaveBeenCalled();
+  });
+
+  it("works with a single-model list", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({
+      input: makeInput("\r"),
+      listModels: vi.fn().mockResolvedValue([MODELS[0]]),
+      writeConfig,
+    });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "claude-sonnet-4");
+  });
+
+  it("renders [chat] and [completion] labels in output", async () => {
+    const outputStream = new PassThrough();
+    const chunks: string[] = [];
+    outputStream.on("data", (d: Buffer) => { chunks.push(d.toString()); });
+
+    const deps = createDeps({ input: makeInput("\r"), output: outputStream });
+    await runChangeModel(deps);
+
+    const out = chunks.join("");
+    expect(out).toContain("[chat]");
+    expect(out).toContain("[completion]");
+    expect(out).toContain(">");
+    expect(out).toContain("Model changed to");
+  });
+
+  it("prints Cancelled. on Ctrl+C", async () => {
+    const outputStream = new PassThrough();
+    const chunks: string[] = [];
+    outputStream.on("data", (d: Buffer) => { chunks.push(d.toString()); });
+
+    const deps = createDeps({ input: makeInput("\x03"), output: outputStream });
+    await runChangeModel(deps);
+    expect(chunks.join("")).toContain("Cancelled.");
+  });
+
+  it("happy path with keyring (no passphrase prompt)", async () => {
+    const writeConfig = vi.fn();
+    const deriveKey = vi.fn();
+    const readPassphrase = vi.fn();
+    const deps = createDeps({
+      input: makeInput("\r"),
+      keyringProvider: { retrieve: vi.fn().mockReturnValue(Buffer.alloc(32)) },
+      deriveKey,
+      readPassphrase,
+      writeConfig,
+    });
+    await runChangeModel(deps);
+    expect(deriveKey).not.toHaveBeenCalled();
+    expect(readPassphrase).not.toHaveBeenCalled();
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "claude-sonnet-4");
+  });
+
+  it("happy path with passphrase (keyring null)", async () => {
+    const writeConfig = vi.fn();
+    const deps = createDeps({
+      input: makeInput("\r"),
+      keyringProvider: { retrieve: vi.fn().mockReturnValue(null) },
+      readPassphrase: vi.fn().mockResolvedValue("mypassword"),
+      deriveKey: vi.fn().mockResolvedValue(Buffer.alloc(32)),
+      writeConfig,
+    });
+    await runChangeModel(deps);
+    expect(writeConfig).toHaveBeenCalledWith(expect.any(String), "claude-sonnet-4");
+  });
 });

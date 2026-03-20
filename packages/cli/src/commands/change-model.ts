@@ -98,13 +98,77 @@ async function resolveKey(
   return deriveKey(passphrase, salt);
 }
 
-// Selector placeholder — replaced in Task 3.
 async function runSelector(
   models: CopilotModelInfo[],
-  _input: NodeJS.ReadableStream,
-  _output: NodeJS.WritableStream,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
 ): Promise<CopilotModelInfo | null> {
-  return models[0] ?? null;
+  const n = models.length;
+  let index = 0;
+
+  const renderRow = (i: number): string => {
+    const m = models[i];
+    if (!m) return "";
+    const label = m.conversational ? "[chat]" : "[completion]";
+    const prefix = i === index ? "> " : "  ";
+    return `${prefix}${m.id}    ${label}\n`;
+  };
+
+  const renderAll = (): string => models.map((_, i) => renderRow(i)).join("");
+
+  // Initial render
+  output.write(renderAll());
+
+  return new Promise<CopilotModelInfo | null>((resolve) => {
+    (input as NodeJS.ReadStream).setRawMode?.(true);
+
+    const onData = (chunk: Buffer): void => {
+      const str = chunk.toString("utf8");
+      let i = 0;
+
+      while (i < str.length) {
+        // Up arrow: ESC [ A
+        if (str[i] === "\x1b" && str[i + 1] === "[" && str[i + 2] === "A") {
+          index = (index - 1 + n) % n;
+          i += 3;
+          output.write(`\x1b[${n}A`);
+          output.write(renderAll());
+          continue;
+        }
+        // Down arrow: ESC [ B
+        if (str[i] === "\x1b" && str[i + 1] === "[" && str[i + 2] === "B") {
+          index = (index + 1) % n;
+          i += 3;
+          output.write(`\x1b[${n}A`);
+          output.write(renderAll());
+          continue;
+        }
+        // Enter
+        if (str[i] === "\r") {
+          cleanup();
+          resolve(models[index] ?? null);
+          return;
+        }
+        // Ctrl+C
+        if (str[i] === "\x03") {
+          cleanup();
+          output.write("Cancelled.\n");
+          resolve(null);
+          return;
+        }
+        i++;
+      }
+    };
+
+    const cleanup = (): void => {
+      input.removeListener("data", onData);
+      (input as NodeJS.ReadStream).setRawMode?.(false);
+    };
+
+    // Attach listener first, then resume — ensures no data events are missed.
+    input.on("data", onData);
+    (input as NodeJS.ReadableStream & { resume(): void }).resume();
+  });
 }
 
 export async function runChangeModel(options: ChangeModelOptions): Promise<void> {
