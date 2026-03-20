@@ -56,6 +56,7 @@ describe("requestDeviceCode", () => {
         client_id: "test-client-id",
         scope: "copilot read:user",
       }),
+      signal: expect.any(AbortSignal),
     });
     expect(result).toEqual(deviceResponse);
   });
@@ -92,6 +93,7 @@ describe("pollForToken", () => {
         device_code: "dc_123",
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
       }),
+      signal: expect.any(AbortSignal),
     });
     expect(result).toEqual(tokenResponse);
   });
@@ -113,6 +115,31 @@ describe("pollForToken", () => {
 
     // Advance past the 1-second delay
     await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await promise;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result).toEqual(tokenResponse);
+
+    vi.useRealTimers();
+  });
+
+  it("handles slow_down by increasing interval and retrying", async () => {
+    vi.useFakeTimers();
+
+    const slowDown = { error: "slow_down" };
+    const tokenResponse = {
+      access_token: "gho_abc123",
+      token_type: "bearer",
+      scope: "copilot",
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(slowDown))
+      .mockResolvedValueOnce(jsonResponse(tokenResponse));
+
+    const promise = pollForToken(config, "dc_123", 5);
+
+    // slow_down increases interval from 5 to 10; advance past the 10-second delay
+    await vi.advanceTimersByTimeAsync(10_000);
 
     const result = await promise;
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -27,6 +27,7 @@ export async function requestDeviceCode(
       client_id: config.clientId,
       scope: config.scopes.join(" "),
     }),
+    signal: AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -38,15 +39,21 @@ export async function requestDeviceCode(
   return (await response.json()) as DeviceCodeResponse;
 }
 
+/** Timeout for individual auth fetch requests (ms). */
+const AUTH_FETCH_TIMEOUT_MS = 30_000;
+
 /**
  * Poll GitHub for the OAuth token after the user has authorized the device.
- * Retries on "authorization_pending" errors, respecting the given interval.
+ * Retries on "authorization_pending" and "slow_down" errors, respecting the
+ * given interval. "slow_down" increases the interval by 5 s as required by
+ * the GitHub Device Flow spec.
  */
 export async function pollForToken(
   config: CopilotAuthConfig,
   deviceCode: string,
   interval: number,
 ): Promise<TokenResponse> {
+  let currentInterval = interval;
   for (;;) {
     const response = await fetch(GITHUB_TOKEN_URL, {
       method: "POST",
@@ -59,6 +66,7 @@ export async function pollForToken(
         device_code: deviceCode,
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
       }),
+      signal: AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -73,7 +81,13 @@ export async function pollForToken(
 
     if ("error" in data) {
       if (data.error === "authorization_pending") {
-        await delay(interval * 1000);
+        await delay(currentInterval * 1000);
+        continue;
+      }
+      if (data.error === "slow_down") {
+        // GitHub requires increasing the interval by 5 s on slow_down
+        currentInterval += 5;
+        await delay(currentInterval * 1000);
         continue;
       }
       throw new Error(`Token poll error: ${data.error}`);
