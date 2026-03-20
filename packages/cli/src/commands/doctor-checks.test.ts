@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   nodeVersionCheck,
-  linuxCheck,
+  platformCheck,
   architectureCheck,
   vaultExistsCheck,
   sandboxHelperCheck,
-  unshareCheck,
+  bwrapCheck,
+  socatCheck,
+  ripgrepCheck,
   landlockCheck,
   seccompCheck,
   userNamespaceCheck,
@@ -32,18 +34,24 @@ describe("nodeVersionCheck", () => {
   });
 });
 
-describe("linuxCheck", () => {
+describe("platformCheck", () => {
   it("passes on linux", async () => {
-    const check = linuxCheck({ platform: "linux" });
+    const check = platformCheck({ platform: "linux" });
     const result = await check.run();
     expect(result.status).toBe("pass");
   });
 
-  it("fails on non-linux", async () => {
-    const check = linuxCheck({ platform: "darwin" });
+  it("passes on darwin", async () => {
+    const check = platformCheck({ platform: "darwin" });
+    const result = await check.run();
+    expect(result.status).toBe("pass");
+  });
+
+  it("fails on unsupported platform", async () => {
+    const check = platformCheck({ platform: "win32" });
     const result = await check.run();
     expect(result.status).toBe("fail");
-    expect(result.message).toContain("darwin");
+    expect(result.message).toContain("win32");
   });
 });
 
@@ -99,20 +107,57 @@ describe("sandboxHelperCheck", () => {
   });
 });
 
-describe("unshareCheck", () => {
-  it("passes when unshare is available", async () => {
-    const check = unshareCheck({ execFileSync: () => "/usr/bin/unshare\n" });
+describe("bwrapCheck", () => {
+  it("passes when bwrap is available", async () => {
+    const check = bwrapCheck({ execFileSync: () => "/usr/bin/bwrap\n" });
     const result = await check.run();
     expect(result.status).toBe("pass");
+    expect(result.message).toContain("bwrap");
   });
 
-  it("fails when unshare is not found", async () => {
-    const check = unshareCheck({
+  it("fails when bwrap is not found", async () => {
+    const check = bwrapCheck({
       execFileSync: () => { throw new Error("not found"); },
     });
     const result = await check.run();
     expect(result.status).toBe("fail");
-    expect(result.detail).toContain("unshare");
+    expect(result.detail).toContain("bwrap");
+  });
+});
+
+describe("socatCheck", () => {
+  it("passes when socat is available", async () => {
+    const check = socatCheck({ execFileSync: () => "/usr/bin/socat\n" });
+    const result = await check.run();
+    expect(result.status).toBe("pass");
+    expect(result.message).toContain("socat");
+  });
+
+  it("warns when socat is not found", async () => {
+    const check = socatCheck({
+      execFileSync: () => { throw new Error("not found"); },
+    });
+    const result = await check.run();
+    expect(result.status).toBe("warn");
+    expect(result.detail).toContain("socat");
+  });
+});
+
+describe("ripgrepCheck", () => {
+  it("passes when rg is available", async () => {
+    const check = ripgrepCheck({ execFileSync: () => "/usr/bin/rg\n" });
+    const result = await check.run();
+    expect(result.status).toBe("pass");
+    expect(result.message).toContain("rg");
+  });
+
+  it("warns when rg is not found", async () => {
+    const check = ripgrepCheck({
+      execFileSync: () => { throw new Error("not found"); },
+    });
+    const result = await check.run();
+    expect(result.status).toBe("warn");
+    expect(result.detail).toContain("ripgrep");
   });
 });
 
@@ -121,6 +166,7 @@ function makeKernelCaps(overrides: Partial<KernelCapabilities> = {}): KernelCapa
     landlock: { supported: true, abiVersion: 3 },
     seccomp: { supported: true },
     namespaces: { user: true, pid: true, net: true, mnt: true },
+    bwrap: { available: true, path: "/usr/bin/bwrap", version: "0.9.0" },
     ...overrides,
   };
 }

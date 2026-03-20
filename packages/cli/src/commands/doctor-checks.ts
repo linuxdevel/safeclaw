@@ -44,20 +44,21 @@ export interface PlatformDeps {
   platform: string;
 }
 
-export function linuxCheck(
+export function platformCheck(
   deps: PlatformDeps = { platform: process.platform },
 ): DiagnosticCheck {
+  const supported = new Set(["linux", "darwin"]);
   return {
-    name: "linux",
+    name: "platform",
     category: "system",
     async run(): Promise<DiagnosticResult> {
-      if (deps.platform === "linux") {
-        return { status: "pass", message: "Running on Linux" };
+      if (supported.has(deps.platform)) {
+        return { status: "pass", message: `Platform: ${deps.platform}` };
       }
       return {
         status: "fail",
-        message: `Running on ${deps.platform}`,
-        detail: "SafeClaw requires Linux.",
+        message: `Unsupported platform: ${deps.platform}`,
+        detail: "SafeClaw supports Linux and macOS (darwin) only.",
       };
     },
   };
@@ -152,30 +153,91 @@ export function sandboxHelperCheck(
   };
 }
 
-export interface UnshareDeps {
+export interface BwrapDeps {
   execFileSync: (cmd: string, args: string[]) => string;
 }
 
-export function unshareCheck(
-  deps: UnshareDeps = {
+export function bwrapCheck(
+  deps: BwrapDeps = {
     execFileSync: (cmd: string, args: string[]) =>
       defaultExecFileSync(cmd, args, { encoding: "utf8" }),
   },
 ): DiagnosticCheck {
   return {
-    name: "unshare",
+    name: "bwrap",
     category: "security",
     async run(): Promise<DiagnosticResult> {
       try {
-        deps.execFileSync("which", ["unshare"]);
-        return { status: "pass", message: "unshare command available" };
+        const path = deps.execFileSync("which", ["bwrap"]).trim();
+        return { status: "pass", message: `bwrap available: ${path}` };
       } catch {
         return {
           status: "fail",
-          message: "unshare command not found",
+          message: "bwrap not found",
           detail:
-            "The 'unshare' command is required for namespace isolation. " +
-            "Install util-linux: apt install util-linux",
+            "bubblewrap (bwrap) is required for sandbox isolation. " +
+            "Install: apt install bubblewrap",
+        };
+      }
+    },
+  };
+}
+
+export interface SocatDeps {
+  execFileSync: (cmd: string, args: string[]) => string;
+}
+
+export function socatCheck(
+  deps: SocatDeps = {
+    execFileSync: (cmd: string, args: string[]) =>
+      defaultExecFileSync(cmd, args, { encoding: "utf8" }),
+  },
+): DiagnosticCheck {
+  return {
+    name: "socat",
+    category: "security",
+    async run(): Promise<DiagnosticResult> {
+      try {
+        const path = deps.execFileSync("which", ["socat"]).trim();
+        return { status: "pass", message: `socat available: ${path}` };
+      } catch {
+        return {
+          status: "warn",
+          message: "socat not found",
+          detail:
+            "socat is used by sandbox-runtime for network proxying. " +
+            "Without it, network domain filtering will not work. " +
+            "Install: apt install socat",
+        };
+      }
+    },
+  };
+}
+
+export interface RipgrepDeps {
+  execFileSync: (cmd: string, args: string[]) => string;
+}
+
+export function ripgrepCheck(
+  deps: RipgrepDeps = {
+    execFileSync: (cmd: string, args: string[]) =>
+      defaultExecFileSync(cmd, args, { encoding: "utf8" }),
+  },
+): DiagnosticCheck {
+  return {
+    name: "ripgrep",
+    category: "security",
+    async run(): Promise<DiagnosticResult> {
+      try {
+        const path = deps.execFileSync("which", ["rg"]).trim();
+        return { status: "pass", message: `rg available: ${path}` };
+      } catch {
+        return {
+          status: "warn",
+          message: "rg (ripgrep) not found",
+          detail:
+            "ripgrep is used by the search tool for fast code search. " +
+            "Install: apt install ripgrep",
         };
       }
     },

@@ -1,11 +1,13 @@
 import type { DiagnosticCheck, DiagnosticResult } from "./doctor-types.js";
 import {
   nodeVersionCheck,
-  linuxCheck,
+  platformCheck,
   architectureCheck,
   vaultExistsCheck,
   sandboxHelperCheck,
-  unshareCheck,
+  bwrapCheck,
+  socatCheck,
+  ripgrepCheck,
   landlockCheck,
   seccompCheck,
   userNamespaceCheck,
@@ -159,10 +161,12 @@ export function createDefaultChecks(): DiagnosticCheck[] {
   return [
     // System
     nodeVersionCheck(),
-    linuxCheck(),
+    platformCheck(),
     architectureCheck(),
     // Security
-    unshareCheck(),
+    bwrapCheck(),
+    socatCheck(),
+    ripgrepCheck(),
     landlockCheck(),
     seccompCheck(),
     userNamespaceCheck(),
