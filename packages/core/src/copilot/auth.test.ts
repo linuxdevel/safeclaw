@@ -176,6 +176,7 @@ describe("getCopilotToken", () => {
         Authorization: "token gho_abc123",
         Accept: "application/json",
       },
+      signal: expect.any(AbortSignal),
     });
     expect(result).toEqual({
       token: "tid=copilot_token_xyz",

@@ -109,6 +109,7 @@ export async function getCopilotToken(
       Authorization: `token ${githubToken}`,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
