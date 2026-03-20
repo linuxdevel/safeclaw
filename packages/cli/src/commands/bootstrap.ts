@@ -33,6 +33,7 @@ import {
   deriveKeyFromPassphrase as defaultDeriveKey,
 } from "@safeclaw/vault";
 import { Sandbox, PolicyBuilder } from "@safeclaw/sandbox";
+import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { readPassphrase as defaultReadPassphrase } from "../readPassphrase.js";
 
 export interface BootstrapDeps {
@@ -180,6 +181,22 @@ export async function bootstrapAgent(
   const toolRegistry = new SimpleToolRegistry();
   for (const tool of createBuiltinTools({ braveApiKey, processManager, allowedCommandPaths })) {
     toolRegistry.register(tool);
+  }
+
+  // Initialize sandbox-runtime network proxy infrastructure.
+  // Uses a base "block all network" config; per-execution configs are passed
+  // as customConfig in Sandbox.execute() → SandboxManager.wrapWithSandbox().
+  try {
+    await SandboxManager.initialize({
+      filesystem: { allowWrite: [], denyWrite: [], denyRead: [] },
+      network: { allowedDomains: [], deniedDomains: [] },
+    });
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
+    output.write(
+      `Warning: sandbox network proxy failed to initialize (${detail}). ` +
+        `Filesystem isolation will still be applied.\n`,
+    );
   }
 
   let sandbox: Sandbox | undefined;

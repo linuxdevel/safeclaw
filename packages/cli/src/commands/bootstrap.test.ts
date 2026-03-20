@@ -6,6 +6,22 @@ import {
   CapabilityRegistry,
   SessionManager,
 } from "@safeclaw/core";
+
+const mockSandboxManagerInitialize = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockSandboxManagerIsSupportedPlatform = vi.fn<() => boolean>().mockReturnValue(true);
+const mockSandboxManagerIsSandboxingEnabled = vi.fn<() => boolean>().mockReturnValue(true);
+
+vi.mock("@anthropic-ai/sandbox-runtime", () => ({
+  SandboxManager: {
+    initialize: mockSandboxManagerInitialize,
+    isSupportedPlatform: mockSandboxManagerIsSupportedPlatform,
+    isSandboxingEnabled: mockSandboxManagerIsSandboxingEnabled,
+    wrapWithSandbox: vi.fn().mockResolvedValue("/bin/true"),
+    cleanupAfterCommand: vi.fn(),
+    reset: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 const MockSandbox = vi.fn();
 const mockForDevelopment = vi.fn().mockReturnValue({
   filesystem: {
@@ -83,6 +99,7 @@ function createMockDeps(
 
 describe("bootstrapAgent", () => {
   beforeEach(() => {
+    mockSandboxManagerInitialize.mockClear();
     MockSandbox.mockReset();
     mockForDevelopment.mockClear();
     mockForDevelopment.mockReturnValue({
@@ -288,6 +305,12 @@ describe("bootstrapAgent", () => {
     expect(MockSandbox).toHaveBeenCalledWith(
       mockForDevelopment.mock.results[0]!.value,
     );
+  });
+
+  it("calls SandboxManager.initialize before constructing Sandbox", async () => {
+    const deps = createMockDeps();
+    await bootstrapAgent(deps);
+    expect(mockSandboxManagerInitialize).toHaveBeenCalledOnce();
   });
 
   it("falls back gracefully when Sandbox constructor throws", async () => {
