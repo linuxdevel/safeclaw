@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "git+ssh://git@github.com/anthropic-experimental/sandbox-runtime.git#20f5176a94314038695bee13779eb9eebbbaeb49",
+    "@anthropic-ai/sandbox-runtime": "git+ssh://git@github.com/linuxdevel/sandbox-runtime.git#20f5176a94314038695bee13779eb9eebbbaeb49",
     "@safeclaw/core": "workspace:*",
     "@safeclaw/gateway": "workspace:*",
     "@safeclaw/sandbox": "workspace:*",

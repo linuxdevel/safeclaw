@@ -38,6 +38,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build sandbox-runtime from source
+        run: |
+          git clone --depth 1 https://github.com/linuxdevel/sandbox-runtime /tmp/sandbox-runtime
+          cd /tmp/sandbox-runtime && npm install && npm run build
+          SRT_DIR=$(node -e "console.log(require.resolve('@anthropic-ai/sandbox-runtime/package.json').replace('/package.json',''))")
+          cp -r /tmp/sandbox-runtime/dist "$SRT_DIR/"
+
       - name: Run tests
         run: pnpm test
 
