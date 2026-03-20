@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { describe, it, expect, afterEach } from "vitest";
 import { createProcessTool } from "./process.js";
 import { ProcessManager } from "../process-manager.js";
@@ -117,10 +119,11 @@ describe("processTool", () => {
 
   it("start action passes cwd option", async () => {
     const tool = setup();
+    const cwd = realpathSync(tmpdir());
     const result = await tool.execute({
       action: "start",
       command: "pwd",
-      cwd: "/tmp",
+      cwd,
     });
     const parsed = JSON.parse(result);
     expect(parsed.id).toBeTruthy();
@@ -129,6 +132,6 @@ describe("processTool", () => {
       action: "log",
       processId: parsed.id,
     });
-    expect(output.trim()).toBe("/tmp");
+    expect(output.trim()).toBe(cwd);
   });
 });
