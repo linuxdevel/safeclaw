@@ -4,11 +4,22 @@ export interface PathRule {
   access: "read" | "write" | "readwrite" | "execute" | "readwriteexecute";
 }
 
+/**
+ * Network policy for a sandbox execution.
+ * - "none": block all outbound network (net namespace, no proxy)
+ * - "localhost": allow only loopback
+ * - object: route through sandbox-runtime proxy with domain allowlist/denylist
+ */
+export type NetworkPolicy =
+  | "none"
+  | "localhost"
+  | { allowedDomains: string[]; deniedDomains?: string[] };
+
 /** Sandbox policy — defines isolation constraints for a single execution */
 export interface SandboxPolicy {
   filesystem: { allow: PathRule[]; deny: PathRule[] };
   syscalls: { allow: string[]; defaultDeny: true };
-  network: "none" | "localhost" | "filtered";
+  network: NetworkPolicy;
   namespaces: { pid: boolean; net: boolean; mnt: boolean; user: boolean };
   timeoutMs?: number | undefined;
 }
@@ -16,6 +27,8 @@ export interface SandboxPolicy {
 /** Which enforcement layers were active during execution */
 export interface EnforcementLayers {
   namespaces: boolean;
+  pivotRoot: boolean;    // bwrap pivot_root was used
+  bindMounts: boolean;   // bwrap bind-mount FS isolation was active
   landlock: boolean;
   seccomp: boolean;
   capDrop: boolean;
@@ -37,6 +50,7 @@ export interface KernelCapabilities {
   landlock: { supported: boolean; abiVersion: number };
   seccomp: { supported: boolean };
   namespaces: { user: boolean; pid: boolean; net: boolean; mnt: boolean };
+  bwrap: { available: boolean; path: string | undefined; version: string | undefined };
 }
 
 /** Default sandbox policy — maximum restriction */

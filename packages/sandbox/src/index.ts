@@ -5,6 +5,7 @@ export {
 } from "./detect.js";
 export { DEFAULT_POLICY } from "./types.js";
 export type {
+  NetworkPolicy,
   SandboxPolicy,
   SandboxResult,
   PathRule,
