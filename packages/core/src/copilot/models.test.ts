@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { listCopilotModels } from "./models.js";
+import { listCopilotModels, listCopilotModelsFromApi } from "./models.js";
+import type { CopilotModelInfo } from "./models.js";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -91,5 +92,76 @@ describe("listCopilotModels", () => {
     const result = await listCopilotModels();
 
     expect(result).toBeNull();
+  });
+});
+
+describe("listCopilotModelsFromApi", () => {
+  it("returns chat and completion models with correct conversational flag", async () => {
+    const apiResponse = {
+      data: [
+        { id: "claude-sonnet-4", name: "Claude Sonnet 4", capabilities: { type: "chat" } },
+        { id: "gpt-5.3-codex", name: "GPT Codex", capabilities: { type: "completions" } },
+        { id: "gpt-4.1", name: "GPT-4.1", capabilities: { type: "chat" } },
+      ],
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(apiResponse),
+    } as Response);
+
+    const result = await listCopilotModelsFromApi("test-copilot-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.githubcopilot.com/models",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-copilot-token",
+        }),
+      }),
+    );
+    expect(result).toEqual<CopilotModelInfo[]>([
+      { id: "claude-sonnet-4", name: "Claude Sonnet 4", conversational: true },
+      { id: "gpt-5.3-codex", name: "GPT Codex", conversational: false },
+      { id: "gpt-4.1", name: "GPT-4.1", conversational: true },
+    ]);
+  });
+
+  it("treats unknown capabilities.type as non-conversational", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        data: [{ id: "embed-1", name: "Embeddings", capabilities: { type: "embeddings" } }],
+      }),
+    } as Response);
+    const result = await listCopilotModelsFromApi("tok");
+    expect(result).toEqual([{ id: "embed-1", name: "Embeddings", conversational: false }]);
+  });
+
+  it("treats missing capabilities as non-conversational", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ data: [{ id: "mystery", name: "Mystery" }] }),
+    } as Response);
+    const result = await listCopilotModelsFromApi("tok");
+    expect(result).toEqual([{ id: "mystery", name: "Mystery", conversational: false }]);
+  });
+
+  it("returns null on non-ok HTTP response", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 } as Response);
+    expect(await listCopilotModelsFromApi("tok")).toBeNull();
+  });
+
+  it("returns null on network error", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("Network error"));
+    expect(await listCopilotModelsFromApi("tok")).toBeNull();
+  });
+
+  it("returns null on empty data array", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ data: [] }),
+    } as Response);
+    expect(await listCopilotModelsFromApi("tok")).toBeNull();
   });
 });

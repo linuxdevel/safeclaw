@@ -1,6 +1,8 @@
 export { requestDeviceCode, pollForToken, getCopilotToken } from "./auth.js";
 export { CopilotClient } from "./client.js";
 export { listCopilotModels } from "./models.js";
+export { listCopilotModelsFromApi } from "./models.js";
+export type { CopilotModelInfo } from "./models.js";
 export { DEFAULT_MODEL, COPILOT_API_BASE } from "./types.js";
 export type {
   CopilotAuthConfig,

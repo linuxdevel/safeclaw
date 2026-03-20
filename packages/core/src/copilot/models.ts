@@ -1,3 +1,5 @@
+import { COPILOT_API_BASE } from "./types.js";
+
 const MODELS_REGISTRY_URL = "https://models.dev/api.json";
 
 interface RegistryProvider {
@@ -35,6 +37,66 @@ export async function listCopilotModels(): Promise<string[] | null> {
     }
 
     return ids;
+  } catch {
+    return null;
+  }
+}
+
+export interface CopilotModelInfo {
+  id: string;
+  name: string;
+  /**
+   * true when capabilities.type === "chat".
+   * false for "completions", any other value, or missing capabilities.
+   */
+  conversational: boolean;
+}
+
+interface RawModelEntry {
+  id: string;
+  name: string;
+  capabilities?: {
+    type?: string;
+  };
+}
+
+interface RawModelsResponse {
+  data: RawModelEntry[];
+}
+
+/**
+ * Fetch the list of models from the authenticated Copilot API.
+ *
+ * Requires a short-lived Copilot API token (not the GitHub OAuth token).
+ * Returns null on any error or if the list is empty.
+ */
+export async function listCopilotModelsFromApi(
+  copilotToken: string,
+): Promise<CopilotModelInfo[] | null> {
+  try {
+    const response = await fetch(`${COPILOT_API_BASE}/models`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${copilotToken}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const body = (await response.json()) as RawModelsResponse;
+
+    if (!Array.isArray(body.data) || body.data.length === 0) {
+      return null;
+    }
+
+    return body.data.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      conversational: entry.capabilities?.type === "chat",
+    }));
   } catch {
     return null;
   }
