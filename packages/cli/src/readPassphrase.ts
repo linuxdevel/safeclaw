@@ -67,7 +67,7 @@ export function readPassphrase(
     // Explicitly resume the stream. readline.pause() stops the underlying
     // OS read via uv_read_stop; simply adding a 'data' listener does not
     // reliably restart it in all Node.js / platform combinations.
-    (input as NodeJS.Readable).resume();
+    (input as NodeJS.ReadableStream & { resume(): void }).resume();
 
     input.on("data", onData);
   });
