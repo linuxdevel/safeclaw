@@ -117,6 +117,7 @@ describe("listCopilotModelsFromApi", () => {
         method: "GET",
         headers: expect.objectContaining({
           Authorization: "Bearer test-copilot-token",
+          "Copilot-Integration-Id": "vscode-chat",
         }),
       }),
     );

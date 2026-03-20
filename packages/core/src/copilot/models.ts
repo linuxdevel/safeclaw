@@ -1,4 +1,8 @@
+import { createRequire } from "node:module";
 import { COPILOT_API_BASE } from "./types.js";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../../package.json") as { version: string };
 
 const MODELS_REGISTRY_URL = "https://models.dev/api.json";
 
@@ -79,6 +83,10 @@ export async function listCopilotModelsFromApi(
       headers: {
         Authorization: `Bearer ${copilotToken}`,
         Accept: "application/json",
+        "Copilot-Integration-Id": "vscode-chat",
+        "Editor-Version": `SafeClaw/${pkg.version}`,
+        "Editor-Plugin-Version": `SafeClaw/${pkg.version}`,
+        "User-Agent": `safeclaw/${pkg.version}`,
       },
     });
 
