@@ -8,5 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "git+ssh://git@github.com/anthropic-experimental/sandbox-runtime.git#20f5176a94314038695bee13779eb9eebbbaeb49"
+  },
   "files": ["dist"]
 }

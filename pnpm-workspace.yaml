@@ -1,4 +1,7 @@
 packages:
   - packages/*
 
-onlyBuiltDependencies: '["esbuild", "@oxlint/binding-linux-x64-gnu"]'
+onlyBuiltDependencies:
+  - esbuild
+  - "@oxlint/binding-linux-x64-gnu"
+  - "@anthropic-ai/sandbox-runtime"
