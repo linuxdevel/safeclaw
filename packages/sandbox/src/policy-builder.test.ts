@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { homedir } from "node:os";
 import { PolicyBuilder } from "./policy-builder.js";
 import type { SandboxPolicy, PathRule } from "./types.js";
-import { DEFAULT_POLICY } from "./types.js";
+import { DEFAULT_POLICY, DANGEROUS_SYSCALLS } from "./types.js";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 
 // Mock lstatSync so toRuntimeConfig() tests are deterministic regardless of
@@ -51,7 +51,7 @@ describe("PolicyBuilder", () => {
       expect(policy.filesystem).toBeDefined();
       expect(policy.filesystem.allow).toBeInstanceOf(Array);
       expect(policy.filesystem.deny).toBeInstanceOf(Array);
-      expect(policy.syscalls.defaultDeny).toBe(true);
+      expect(policy.syscalls.defaultAllow).toBe(true);
       expect(policy.network).toBe("none");
       expect(policy.namespaces).toEqual({
         pid: true,
@@ -61,10 +61,11 @@ describe("PolicyBuilder", () => {
       });
     });
 
-    it("starts with an empty policy", () => {
+    it("starts with an empty filesystem policy and a denylist", () => {
       const policy = new PolicyBuilder().build();
       expect(policy.filesystem.allow).toHaveLength(0);
-      expect(policy.syscalls.allow).toHaveLength(0);
+      expect(policy.syscalls.deny).toEqual([...DANGEROUS_SYSCALLS]);
+      expect(policy.syscalls.defaultAllow).toBe(true);
     });
 
     it("chains builder methods", () => {
@@ -228,33 +229,25 @@ describe("PolicyBuilder", () => {
       });
     });
 
-    it("has an expanded syscall allowlist", () => {
-      // Should have significantly more than the DEFAULT_POLICY's 26 syscalls
-      expect(policy.syscalls.allow.length).toBeGreaterThan(50);
-      expect(policy.syscalls.defaultDeny).toBe(true);
+    it("has a denylist of dangerous syscalls with default allow", () => {
+      expect(policy.syscalls.deny).toEqual([...DANGEROUS_SYSCALLS]);
+      expect(policy.syscalls.defaultAllow).toBe(true);
     });
 
-    it("includes essential syscalls for development tools", () => {
-      const essentialSyscalls = [
-        "openat",
-        "stat",
-        "readlink",
-        "getdents64",
-        "pipe2",
-        "clone",
-        "execve",
-        "futex",
-        "clock_gettime",
-        "newfstatat",
-        "clone3",
-        "mkdir",
-        "unlink",
-        "rename",
+    it("denies kernel/privilege escalation syscalls", () => {
+      const expectedDenied = [
+        "ptrace",
+        "bpf",
+        "kexec_load",
+        "init_module",
+        "mount",
+        "setns",
+        "add_key",
       ];
-      for (const sc of essentialSyscalls) {
+      for (const sc of expectedDenied) {
         expect(
-          policy.syscalls.allow,
-          `expected syscall "${sc}" to be allowed`,
+          policy.syscalls.deny,
+          `expected syscall "${sc}" to be in denylist`,
         ).toContain(sc);
       }
     });

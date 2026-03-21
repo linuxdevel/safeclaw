@@ -1,8 +1,9 @@
 import { lstatSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import type { SandboxPolicy, PathRule, NetworkPolicy } from "./types.js";
+import { DANGEROUS_SYSCALLS } from "./types.js";
 
 /** Options for customizing the development policy */
 export interface DevelopmentPolicyOptions {
@@ -29,7 +30,6 @@ export interface DevelopmentPolicyOptions {
 export class PolicyBuilder {
   private readonly allowRules: PathRule[] = [];
   private readonly denyRules: PathRule[] = [];
-  private readonly syscalls: string[] = [];
   private readonly seenPaths = new Set<string>();
 
   addReadExecute(path: string): this {
@@ -65,8 +65,8 @@ export class PolicyBuilder {
         deny: [...this.denyRules],
       },
       syscalls: {
-        allow: [...this.syscalls],
-        defaultDeny: true as const,
+        deny: [...DANGEROUS_SYSCALLS],
+        defaultAllow: true as const,
       },
       network: "none",
       namespaces: { pid: true, net: true, mnt: true, user: true },
@@ -91,22 +91,95 @@ export class PolicyBuilder {
       .filter((r) => r.access === "readwrite" || r.access === "readwriteexecute")
       .map((r) => r.path);
 
-    // Always deny reads to credential/secret directories that exist.
+    // Always deny reads to credential/secret paths that exist.
     // Non-existent paths are skipped — bwrap cannot bind-mount over them.
-    // sandbox-runtime also enforces mandatory deny on dangerous files (.bashrc,
-    // .git/hooks, etc.) regardless of this config — these are complementary.
     const home = homedir();
-    const denyRead = [
-      `${home}/.ssh`,
-      `${home}/.aws`,
-      `${home}/.gnupg`,
-      `${home}/.kube`,
-      `${home}/.docker`,
-      `${home}/.gcloud`,
-      `${home}/.azure`,
+    const denyReadCandidates = [
+      // ── Cloud provider credentials ──────────────────────────────────
+      join(home, ".ssh"),
+      join(home, ".aws"),
+      join(home, ".gnupg"),
+      join(home, ".kube"),
+      join(home, ".docker"),
+      join(home, ".gcloud"),
+      join(home, ".config", "gcloud"),
+      join(home, ".azure"),
+      join(home, ".config", "azure"),
+
+      // ── Git & VCS ───────────────────────────────────────────────────
+      join(home, ".git-credentials"),
+      join(home, ".netrc"),
+
+      // ── Package manager credentials ─────────────────────────────────
+      join(home, ".npmrc"),
+      join(home, ".cargo", "credentials"),
+      join(home, ".cargo", "credentials.toml"),
+      join(home, ".pypirc"),
+      join(home, ".m2", "settings.xml"),
+      join(home, ".gradle", "gradle.properties"),
+      join(home, ".gem", "credentials"),
+
+      // ── PaaS / SaaS CLI credentials ─────────────────────────────────
+      join(home, ".config", "gh"),
+      join(home, ".config", "hub"),
+      join(home, ".config", "heroku"),
+      join(home, ".fly"),
+      join(home, ".config", "flyctl"),
+      join(home, ".vercel"),
+      join(home, ".config", "netlify"),
+      join(home, ".config", "op"),         // 1Password CLI
+      join(home, ".config", "doctl"),
+      join(home, ".vault-token"),
+      join(home, ".terraform.d", "credentials.tfrc.json"),
+
+      // ── Password managers & secrets ─────────────────────────────────
+      join(home, ".password-store"),
+      join(home, ".1password"),
+      join(home, ".lastpass"),
+      join(home, ".bitwarden"),
+
+      // ── Database credentials ─────────────────────────────────────────
+      join(home, ".pgpass"),
+      join(home, ".my.cnf"),
+      join(home, ".myclirc"),
+
+      // ── Shell history ────────────────────────────────────────────────
+      join(home, ".bash_history"),
+      join(home, ".zsh_history"),
+      join(home, ".sh_history"),
+
+      // ── AI agent configs (skill-worm / prompt-injection prevention) ──
+      join(home, ".claude"),
+      join(home, ".config", "claude"),
+      join(home, ".anthropic"),
+      join(home, ".safeclaw"),             // protect vault + own config
+    ];
+
+    const denyRead = denyReadCandidates.filter((p) => {
+      try {
+        lstatSync(p);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    // Protect shell init files and git config from writes even if the
+    // sandbox allows writing to the home directory.
+    const denyWrite = [
+      join(home, ".bashrc"),
+      join(home, ".bash_profile"),
+      join(home, ".bash_login"),
+      join(home, ".zshrc"),
+      join(home, ".zprofile"),
+      join(home, ".profile"),
+      join(home, ".gitconfig"),
+      join(home, ".ssh", "authorized_keys"),
+      join(home, ".ssh", "config"),
     ].filter((p) => {
       try {
-        return lstatSync(p).isDirectory();
+        lstatSync(p);
+        return true;
       } catch {
         return false;
       }
@@ -118,7 +191,7 @@ export class PolicyBuilder {
     return {
       filesystem: {
         allowWrite,
-        denyWrite: [],
+        denyWrite,
         denyRead,
       },
       network,
@@ -134,7 +207,7 @@ export class PolicyBuilder {
    * - Execute access to standard command/library paths, compiler toolchains
    * - Read access to home directory (excluding sensitive dirs like ~/.ssh by omission)
    * - Read access to /etc, /proc/self, device nodes, headers, and support files
-   * - Expanded syscall allowlist for common dev tools
+   * - Seccomp denylist for dangerous kernel/privilege syscalls (default allow)
    * - No network access (tools needing network run unsandboxed)
    */
   static forDevelopment(
@@ -216,12 +289,6 @@ export class PolicyBuilder {
       }
     }
 
-    // ── Expanded syscall allowlist ───────────────────────────────────
-    // Includes all DEFAULT_POLICY syscalls plus what common dev tools need
-    for (const sc of DEVELOPMENT_SYSCALLS) {
-      builder.syscalls.push(sc);
-    }
-
     // ── Network ──────────────────────────────────────────────────────
     const networkPolicy: NetworkPolicy =
       options?.allowedNetworkDomains !== undefined
@@ -247,211 +314,3 @@ function buildNetworkConfig(
   };
 }
 
-/**
- * Syscalls needed for typical development tool execution.
- * This is the DEFAULT_POLICY set plus everything needed by:
- * Node.js, git, pnpm, gcc, javac, rustc, go, make, and common CLI tools.
- */
-const DEVELOPMENT_SYSCALLS: readonly string[] = [
-  // ── Process lifecycle ──────────────────────────────────────────────
-  "exit",
-  "exit_group",
-  "clone",
-  "clone3",
-  "execve",
-  "execveat",
-  "wait4",
-  "waitid",
-  "vfork",
-  "kill",
-  "tgkill",
-  "getpid",
-  "getppid",
-  "gettid",
-  "getuid",
-  "getgid",
-  "geteuid",
-  "getegid",
-  "getgroups",
-  "getpgrp",
-  "prctl",
-  "arch_prctl",
-  "set_tid_address",
-  "set_robust_list",
-  "capget",
-  "setresuid",
-  "setresgid",
-
-  // ── Memory management ──────────────────────────────────────────────
-  "brk",
-  "mmap",
-  "mprotect",
-  "munmap",
-  "mremap",
-  "madvise",
-  "memfd_create",
-
-  // ── File operations ────────────────────────────────────────────────
-  "read",
-  "write",
-  "open",
-  "openat",
-  "close",
-  "fstat",
-  "stat",
-  "lstat",
-  "newfstatat",
-  "statx",
-  "access",
-  "faccessat2",
-  "readlink",
-  "readlinkat",
-  "getdents64",
-  "lseek",
-  "pread64",
-  "pwrite64",
-  "readv",
-  "writev",
-  "fcntl",
-  "ioctl",
-  "truncate",
-  "ftruncate",
-
-  // ── File modification ──────────────────────────────────────────────
-  "rename",
-  "renameat",
-  "renameat2",
-  "mkdir",
-  "mkdirat",
-  "rmdir",
-  "unlink",
-  "unlinkat",
-  "symlink",
-  "symlinkat",
-  "chmod",
-  "fchmod",
-  "fchmodat",
-  "chown",
-  "fchown",
-  "lchown",
-  "umask",
-  "utimensat",
-  "fallocate",
-  "flock",
-
-  // ── Directory navigation ───────────────────────────────────────────
-  "getcwd",
-  "chdir",
-  "fchdir",
-
-  // ── Pipes and IPC ──────────────────────────────────────────────────
-  "pipe",
-  "pipe2",
-  "dup",
-  "dup2",
-  "dup3",
-  "close_range",
-  "copy_file_range",
-  "sendfile",
-  "splice",
-  "tee",
-
-  // ── Signals ────────────────────────────────────────────────────────
-  "rt_sigaction",
-  "rt_sigprocmask",
-  "rt_sigreturn",
-  "rt_sigtimedwait",
-  "rt_sigqueueinfo",
-  "sigaltstack",
-
-  // ── Socket operations (for IPC, not network — Landlock controls net) ──
-  "socket",
-  "connect",
-  "sendto",
-  "recvfrom",
-  "sendmsg",
-  "recvmsg",
-  "bind",
-  "listen",
-  "accept4",
-  "socketpair",
-  "getsockname",
-  "getpeername",
-  "setsockopt",
-  "getsockopt",
-  "shutdown",
-
-  // ── Polling and events ─────────────────────────────────────────────
-  "poll",
-  "ppoll",
-  "select",
-  "pselect6",
-  "epoll_create1",
-  "epoll_ctl",
-  "epoll_wait",
-  "epoll_pwait",
-  "eventfd2",
-  "inotify_init1",
-  "inotify_add_watch",
-  "inotify_rm_watch",
-  "timerfd_create",
-  "timerfd_settime",
-  "timerfd_gettime",
-  "signalfd4",
-
-  // ── Time ───────────────────────────────────────────────────────────
-  "clock_gettime",
-  "clock_getres",
-  "clock_nanosleep",
-  "gettimeofday",
-  "nanosleep",
-  "alarm",
-  "setitimer",
-  "getitimer",
-  "times",
-
-  // ── System info ────────────────────────────────────────────────────
-  "uname",
-  "sysinfo",
-  "statfs",
-  "fstatfs",
-  "getrlimit",
-  "setrlimit",
-  "prlimit64",
-  "getrusage",
-  "sched_getaffinity",
-  "sched_yield",
-  "getrandom",
-  "rseq",
-
-  // ── io_uring (used by modern Node.js and tools) ────────────────────
-  "io_uring_setup",
-  "io_uring_enter",
-  "io_uring_register",
-
-  // ── Threading / futex ──────────────────────────────────────────────
-  "futex",
-
-  // ── Extended file attributes (needed by ls -l, cp, tar, etc.) ──────
-  // ls -l calls lgetxattr() on each file to check POSIX ACLs; without
-  // these the process is killed by the SECCOMP_RET_KILL_PROCESS default.
-  "getxattr",
-  "lgetxattr",
-  "fgetxattr",
-  "listxattr",
-  "llistxattr",
-  "flistxattr",
-
-  // ── Read hints ─────────────────────────────────────────────────────
-  // Used by grep, cat, and many tools to advise the kernel on I/O patterns
-  "fadvise64",
-
-  // ── Legacy faccessat (without flags argument) ───────────────────────
-  // Some binaries use the older faccessat instead of faccessat2
-  "faccessat",
-
-  // ── Misc (needed by Node.js, compilers, linkers) ───────────────────
-  "openat2",
-  "mknod",
-  "restart_syscall",
-];

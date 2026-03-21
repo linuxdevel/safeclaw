@@ -18,11 +18,47 @@ export type NetworkPolicy =
 /** Sandbox policy — defines isolation constraints for a single execution */
 export interface SandboxPolicy {
   filesystem: { allow: PathRule[]; deny: PathRule[] };
-  syscalls: { allow: string[]; defaultDeny: true };
+  syscalls: { deny: string[]; defaultAllow: true };
   network: NetworkPolicy;
   namespaces: { pid: boolean; net: boolean; mnt: boolean; user: boolean };
   timeoutMs?: number | undefined;
 }
+
+/**
+ * Syscalls that are always denied regardless of policy mode.
+ * These are kernel/privilege-escalation syscalls that no sandboxed
+ * development process should ever need.
+ */
+export const DANGEROUS_SYSCALLS: readonly string[] = [
+  // Kernel module loading
+  "init_module",
+  "finit_module",
+  "delete_module",
+  // System reboot / power management
+  "kexec_load",
+  "kexec_file_load",
+  "reboot",
+  "swapon",
+  "swapoff",
+  // Namespace / container escape
+  "mount",
+  "umount2",
+  "pivot_root",
+  "chroot",
+  "setns",
+  // Kernel tracing / BPF (privilege escalation vectors)
+  "ptrace",
+  "bpf",
+  "perf_event_open",
+  "userfaultfd",
+  // Kernel keyring (credential theft)
+  "add_key",
+  "request_key",
+  "keyctl",
+  // Raw hardware I/O port access (privilege escalation on x86)
+  "ioperm",
+  "iopl",
+];
 
 /** Which enforcement layers were active during execution */
 export interface EnforcementLayers {
@@ -53,40 +89,12 @@ export interface KernelCapabilities {
   bwrap: { available: boolean; path: string | undefined; version: string | undefined };
 }
 
-/** Default sandbox policy — maximum restriction */
+/** Default sandbox policy — deny dangerous syscalls, allow everything else */
 export const DEFAULT_POLICY: SandboxPolicy = {
   filesystem: { allow: [], deny: [] },
   syscalls: {
-    allow: [
-      "read",
-      "write",
-      "exit",
-      "exit_group",
-      "brk",
-      "mmap",
-      "close",
-      "fstat",
-      "mprotect",
-      "munmap",
-      "rt_sigaction",
-      "rt_sigprocmask",
-      "ioctl",
-      "access",
-      "getpid",
-      "clone",
-      "execve",
-      "wait4",
-      "uname",
-      "fcntl",
-      "getcwd",
-      "arch_prctl",
-      "set_tid_address",
-      "set_robust_list",
-      "rseq",
-      "prlimit64",
-      "getrandom",
-    ],
-    defaultDeny: true,
+    deny: [...DANGEROUS_SYSCALLS],
+    defaultAllow: true,
   },
   network: "none",
   namespaces: { pid: true, net: true, mnt: true, user: true },

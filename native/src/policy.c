@@ -335,7 +335,7 @@ static int parse_filesystem(Parser *p, Policy *out)
     return expect_char(p, '}');
 }
 
-/* ── parse string array (for syscalls.allow) ─────────────────────────── */
+/* ── parse string array (for syscalls.deny) ──────────────────────────── */
 
 static int parse_string_array(Parser *p, char arr[][POLICY_SYSCALL_NAMELEN],
                               int max, int *count)
@@ -376,12 +376,14 @@ static int parse_syscalls(Parser *p, Policy *out)
         if (parse_string(p, key, (int)sizeof(key)) < 0) return -1;
         if (expect_char(p, ':') < 0) return -1;
 
-        if (strcmp(key, "allow") == 0) {
+        if (strcmp(key, "deny") == 0) {
             if (parse_string_array(p, out->syscalls, POLICY_MAX_SYSCALLS,
                                    &out->syscall_count) < 0)
                 return -1;
-        } else if (strcmp(key, "defaultDeny") == 0) {
-            if (parse_bool(p, &out->default_deny) < 0) return -1;
+        } else if (strcmp(key, "defaultAllow") == 0) {
+            /* defaultAllow: true is the only supported mode; ignore value */
+            int ignored;
+            if (parse_bool(p, &ignored) < 0) return -1;
         } else {
             if (skip_value(p) < 0) return -1;
         }

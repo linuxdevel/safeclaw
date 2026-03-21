@@ -91,20 +91,20 @@ int install_seccomp_filter(const Policy *policy)
     }
 
     /*
-     * BPF program layout:
+     * BPF program layout (denylist — default ALLOW):
      *
      *   [0]           BPF_LD   — load arch from seccomp_data.arch
      *   [1]           BPF_JEQ  — if arch == AUDIT_ARCH_X86_64, skip to [3]
      *   [2]           BPF_RET  — SECCOMP_RET_KILL_PROCESS (wrong arch)
      *   [3]           BPF_LD   — load syscall nr from seccomp_data.nr
-     *   [4..4+N-1]   BPF_JEQ  — check each allowed syscall → jump to ALLOW
-     *   [4+N]        BPF_RET  — SECCOMP_RET_KILL_PROCESS (default deny)
-     *   [4+N+1]      BPF_RET  — SECCOMP_RET_ALLOW
+     *   [4..4+N-1]   BPF_JEQ  — check each denied syscall → jump to KILL
+     *   [4+N]        BPF_RET  — SECCOMP_RET_ALLOW (default — fell through)
+     *   [4+N+1]      BPF_RET  — SECCOMP_RET_KILL_PROCESS (denied syscall)
      *
      * For each JEQ at index [4+i] (where i = 0..N-1):
-     *   ALLOW is at index [4+N+1]
+     *   KILL is at index [4+N+1]
      *   jt = (4+N+1) - (4+i) - 1 = N - i
-     *   jf = 0 (fall through to next instruction)
+     *   jf = 0 (fall through to next check)
      */
 
     int idx = 0;
@@ -130,9 +130,9 @@ int install_seccomp_filter(const Policy *policy)
         BPF_LD | BPF_W | BPF_ABS,
         (uint32_t)offsetof(struct seccomp_data, nr));
 
-    /* [4..4+N-1] Check each allowed syscall */
+    /* [4..4+N-1] Check each denied syscall */
     for (int i = 0; i < count; i++) {
-        /* jt = N - i  (distance from this insn to the ALLOW ret) */
+        /* jt = N - i  (distance from this insn to the KILL ret at [4+N+1]) */
         unsigned char jt = (unsigned char)(count - i);
         insns[idx++] = (struct sock_filter)BPF_JUMP(
             BPF_JMP | BPF_JEQ | BPF_K,
@@ -140,15 +140,15 @@ int install_seccomp_filter(const Policy *policy)
             jt, 0);
     }
 
-    /* [4+N] Default deny: kill process */
-    insns[idx++] = (struct sock_filter)BPF_STMT(
-        BPF_RET | BPF_K,
-        SECCOMP_RET_KILL_PROCESS);
-
-    /* [4+N+1] Allow */
+    /* [4+N] Default allow: fell through all deny checks */
     insns[idx++] = (struct sock_filter)BPF_STMT(
         BPF_RET | BPF_K,
         SECCOMP_RET_ALLOW);
+
+    /* [4+N+1] Denied syscall: kill process */
+    insns[idx++] = (struct sock_filter)BPF_STMT(
+        BPF_RET | BPF_K,
+        SECCOMP_RET_KILL_PROCESS);
 
     struct sock_fprog prog = {
         .len = (unsigned short)idx,

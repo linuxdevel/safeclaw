@@ -37,10 +37,11 @@ static void add_syscall(Policy *p, const char *name)
 static void init_policy(Policy *p)
 {
     memset(p, 0, sizeof(*p));
-    p->default_deny = 1;
+    /* default_deny is ignored by install_seccomp_filter (always denylist mode).
+       default_allow = 0 matches the memset. */
 }
 
-/* ── test: allowed syscalls ──────────────────────────────────────────── */
+/* ── test: default-allow (non-denied syscalls work) ─────────────────── */
 
 static void test_allowed_syscalls(void)
 {
@@ -53,30 +54,16 @@ static void test_allowed_syscalls(void)
     }
 
     if (pid == 0) {
-        /* Child: install filter and do allowed operations */
+        /* Child: install denylist filter with only dangerous syscalls.
+           write() is NOT in the deny list → default ALLOW should let it through. */
         Policy p;
         init_policy(&p);
 
-        /* Syscalls needed for musl runtime + our test */
-        add_syscall(&p, "read");
-        add_syscall(&p, "write");
-        add_syscall(&p, "exit_group");
-        add_syscall(&p, "brk");
-        add_syscall(&p, "mmap");
-        add_syscall(&p, "mprotect");
-        add_syscall(&p, "munmap");
-        add_syscall(&p, "rt_sigaction");
-        add_syscall(&p, "close");
-        add_syscall(&p, "fstat");
-        add_syscall(&p, "rt_sigreturn");
-        add_syscall(&p, "arch_prctl");
-        add_syscall(&p, "set_tid_address");
-        add_syscall(&p, "set_robust_list");
-        add_syscall(&p, "rseq");
-        add_syscall(&p, "prlimit64");
-        add_syscall(&p, "getrandom");
-        add_syscall(&p, "futex");
-        add_syscall(&p, "newfstatat");
+        /* Deny kernel-takeover syscalls; leave write/exit/etc. allowed */
+        add_syscall(&p, "ptrace");
+        add_syscall(&p, "bpf");
+        add_syscall(&p, "kexec_load");
+        add_syscall(&p, "init_module");
 
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
             _exit(99);
@@ -86,7 +73,7 @@ static void test_allowed_syscalls(void)
             _exit(98);
         }
 
-        /* Perform an allowed operation: write to stderr */
+        /* write() is not in deny list → should be allowed by default */
         const char msg[] = "seccomp: child alive\n";
         ssize_t wr = write(STDERR_FILENO, msg, sizeof(msg) - 1);
         if (wr < 0) _exit(97);
@@ -101,7 +88,7 @@ static void test_allowed_syscalls(void)
     ASSERT(WIFEXITED(status), "child exited normally");
     if (WIFEXITED(status)) {
         ASSERT(WEXITSTATUS(status) == 0,
-               "child exit code is 0 (allowed syscalls worked)");
+               "child exit code is 0 (non-denied syscalls allowed by default)");
     }
 }
 
@@ -118,13 +105,13 @@ static void test_denied_syscalls(void)
     }
 
     if (pid == 0) {
-        /* Child: install very restrictive filter, then call getpid() */
+        /* Child: add getpid to the denylist, then call it.
+           With denylist mode (default ALLOW), getpid must be explicitly
+           denied to trigger SECCOMP_RET_KILL_PROCESS. */
         Policy p;
         init_policy(&p);
 
-        /* Only allow exit_group and write — getpid should be killed */
-        add_syscall(&p, "exit_group");
-        add_syscall(&p, "write");
+        add_syscall(&p, "getpid");
 
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
             _exit(99);
@@ -134,7 +121,7 @@ static void test_denied_syscalls(void)
             _exit(98);
         }
 
-        /* This should trigger SECCOMP_RET_KILL_PROCESS → SIGSYS */
+        /* getpid is in the denylist → SECCOMP_RET_KILL_PROCESS → SIGSYS */
         (void)getpid();
 
         /* Should never reach here */
@@ -148,7 +135,7 @@ static void test_denied_syscalls(void)
     ASSERT(WIFSIGNALED(status), "child was killed by signal");
     if (WIFSIGNALED(status)) {
         ASSERT(WTERMSIG(status) == SIGSYS,
-               "child was killed by SIGSYS (bad syscall)");
+               "child was killed by SIGSYS (denied syscall)");
     }
 }
 

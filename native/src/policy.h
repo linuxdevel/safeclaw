@@ -37,6 +37,8 @@ typedef struct {
     int deny_count;
     char syscalls[POLICY_MAX_SYSCALLS][POLICY_SYSCALL_NAMELEN];
     int syscall_count;
+    /* default_deny: unused (always 0). Retained for ABI compatibility.
+       The seccomp filter now always uses denylist mode (default ALLOW). */
     int default_deny;
 } Policy;
 
