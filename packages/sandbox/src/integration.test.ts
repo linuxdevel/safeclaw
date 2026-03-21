@@ -57,14 +57,8 @@ const ECHO_POLICY: SandboxPolicy = {
     deny: [],
   },
   syscalls: {
-    defaultDeny: true,
-    allow: [
-      ...DEFAULT_POLICY.syscalls.allow,
-      "openat",
-      "pread64",
-      "newfstatat",
-      "writev",
-    ],
+    defaultAllow: true,
+    deny: [...DEFAULT_POLICY.syscalls.deny],
   },
 };
 

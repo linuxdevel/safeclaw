@@ -1,4 +1,12 @@
-import { lstatSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
+
+function realpathSyncOrNull(p: string): string | null {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+}
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
@@ -158,6 +166,16 @@ export class PolicyBuilder {
     const denyRead = denyReadCandidates.filter((p) => {
       try {
         lstatSync(p);
+        // Resolve symlinks: skip paths that resolve outside the local
+        // filesystem (e.g. WSL2 symlinks pointing into /mnt/c/...).
+        // bwrap bind-mounts the local root read-only but does not include
+        // /mnt/*, so --tmpfs over a symlink target under /mnt fails.
+        try {
+          const real = realpathSyncOrNull(p);
+          if (real !== null && real.startsWith("/mnt/")) return false;
+        } catch {
+          return false; // broken symlink or unresolvable path
+        }
         return true;
       } catch {
         return false;

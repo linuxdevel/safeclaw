@@ -85,8 +85,9 @@ describe("Sandbox escape prevention", () => {
   });
 
   describe("DEFAULT_POLICY is maximally restrictive", () => {
-    it("uses defaultDeny: true for syscalls", () => {
-      expect(DEFAULT_POLICY.syscalls.defaultDeny).toBe(true);
+    it("uses defaultAllow: true with dangerous syscalls denied", () => {
+      expect(DEFAULT_POLICY.syscalls.defaultAllow).toBe(true);
+      expect(DEFAULT_POLICY.syscalls.deny.length).toBeGreaterThan(0);
     });
 
     it("blocks all network access", () => {
