@@ -432,6 +432,24 @@ const DEVELOPMENT_SYSCALLS: readonly string[] = [
   // ── Threading / futex ──────────────────────────────────────────────
   "futex",
 
+  // ── Extended file attributes (needed by ls -l, cp, tar, etc.) ──────
+  // ls -l calls lgetxattr() on each file to check POSIX ACLs; without
+  // these the process is killed by the SECCOMP_RET_KILL_PROCESS default.
+  "getxattr",
+  "lgetxattr",
+  "fgetxattr",
+  "listxattr",
+  "llistxattr",
+  "flistxattr",
+
+  // ── Read hints ─────────────────────────────────────────────────────
+  // Used by grep, cat, and many tools to advise the kernel on I/O patterns
+  "fadvise64",
+
+  // ── Legacy faccessat (without flags argument) ───────────────────────
+  // Some binaries use the older faccessat instead of faccessat2
+  "faccessat",
+
   // ── Misc (needed by Node.js, compilers, linkers) ───────────────────
   "openat2",
   "mknod",
