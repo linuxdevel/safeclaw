@@ -56,11 +56,14 @@ echo "==> Installing production dependencies in bundle..."
 echo "==> Patching sandbox-runtime dist into bundle..."
 MAIN_SRT=$(find node_modules/.pnpm -maxdepth 4 -path "*/@anthropic-ai/sandbox-runtime" -type d | head -1)
 BUNDLE_SRT=$(find bundle/safeclaw/node_modules/.pnpm -maxdepth 4 -path "*/@anthropic-ai/sandbox-runtime" -type d | head -1)
-if [ -n "$MAIN_SRT" ] && [ -d "$MAIN_SRT/dist" ] && [ -n "$BUNDLE_SRT" ]; then
+if [ -n "$MAIN_SRT" ] && [ -d "$MAIN_SRT/dist" ]; then
   cp -r "$MAIN_SRT/dist" "$BUNDLE_SRT/"
 else
-  echo "ERROR: sandbox-runtime dist not found; run the CI build step first" >&2
-  exit 1
+  echo "==> sandbox-runtime dist not found locally; building from linuxdevel fork..."
+  git clone --depth 1 https://github.com/linuxdevel/sandbox-runtime /tmp/sandbox-runtime-bundle
+  npm --prefix /tmp/sandbox-runtime-bundle install
+  npm --prefix /tmp/sandbox-runtime-bundle run build
+  cp -r /tmp/sandbox-runtime-bundle/dist "$BUNDLE_SRT/"
 fi
 
 echo "==> Creating tarball..."
